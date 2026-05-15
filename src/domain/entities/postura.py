@@ -1,19 +1,14 @@
-"""
-Entidad pura de dominio: Postura.
-No conoce cámaras, interfaces ni librerías externas.
-"""
 from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from datetime import datetime
-
 
 class EstadoPostural(Enum):
     OPTIMO = "OPTIMO"
     ADVERTENCIA = "ADVERTENCIA"
     CRITICO = "CRITICO"
     CALIBRANDO = "CALIBRANDO"
-
+    AUSENTE = "AUSENTE"
 
 @dataclass
 class CoordenadaCorporal:
@@ -24,7 +19,6 @@ class CoordenadaCorporal:
 
     def es_confiable(self) -> bool:
         return self.visibilidad >= 0.6
-
 
 @dataclass
 class LecturaCorporal:
@@ -43,7 +37,6 @@ class LecturaCorporal:
             self.hombro_izquierdo.es_confiable(),
             self.hombro_derecho.es_confiable(),
         ])
-
 
 @dataclass
 class Postura:
