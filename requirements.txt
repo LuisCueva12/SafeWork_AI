@@ -1,0 +1,7 @@
+opencv-python==4.9.0.80
+mediapipe==0.10.14
+customtkinter==5.2.2
+Pillow==10.3.0
+pystray==0.19.5
+pyinstaller==6.6.0
+numpy==1.26.4
