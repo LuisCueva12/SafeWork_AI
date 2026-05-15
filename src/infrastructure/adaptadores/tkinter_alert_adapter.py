@@ -2,39 +2,40 @@
 Adaptador de Salida (Driven Adapter): TkinterAlertAdapter.
 Única clase que conoce CustomTkinter.
 
-BUG FIXES:
-- __future__ annotations para Python 3.10
-- _iniciar_actualizacion_ui usa .after() en lugar de llamada directa (evita crash pre-mainloop)
-- _construir_panel_metricas: variables de label correctamente retornadas y asignadas
-- emitir_alerta_* NO incrementa contador (el Use Case es el responsable de eso — SRP)
-- Locks correctamente gestionados para prevenir deadlock en _cerrar_alerta
-- Ventana de alerta: grab_set() para forzar foco en Windows
-- Thread-safe UI updates via ventana.after()
+FEATURE: Panel de cámara con preview en tiempo real del skeleton detectado.
 """
 from __future__ import annotations
-from typing import Optional
+from typing import Optional, Callable
 import threading
 import time
 import customtkinter as ctk
+from PIL import Image, ImageTk
+import cv2
+import numpy as np
+
 from ...domain.puertos.puerto_emision_alertas import PuertoEmisionAlertas
 from ...domain.entities.postura import Postura, EstadoPostural
 
 
 DURACION_PAUSA_ACTIVA_SEGUNDOS = 60
 
+# Tamaño del preview de cámara dentro de la UI
+PREVIEW_ANCHO = 380
+PREVIEW_ALTO  = 214
+
 PALETA = {
-    "fondo_oscuro": "#0A0E1A",
-    "fondo_panel": "#111827",
-    "fondo_card": "#1C2333",
-    "borde_card": "#2D3748",
-    "acento_primario": "#00D4FF",
-    "acento_secundario": "#7C3AED",
-    "estado_optimo": "#10B981",
+    "fondo_oscuro":       "#0A0E1A",
+    "fondo_panel":        "#111827",
+    "fondo_card":         "#1C2333",
+    "borde_card":         "#2D3748",
+    "acento_primario":    "#00D4FF",
+    "acento_secundario":  "#7C3AED",
+    "estado_optimo":      "#10B981",
     "estado_advertencia": "#F59E0B",
-    "estado_critico": "#EF4444",
-    "texto_primario": "#F1F5F9",
-    "texto_secundario": "#94A3B8",
-    "texto_tenue": "#475569",
+    "estado_critico":     "#EF4444",
+    "texto_primario":     "#F1F5F9",
+    "texto_secundario":   "#94A3B8",
+    "texto_tenue":        "#475569",
 }
 
 
@@ -46,17 +47,31 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
         self._mostrando_alerta = False
         self._lock = threading.Lock()
 
+        # Widgets de métricas
         self._label_angulo: Optional[ctk.CTkLabel] = None
         self._label_estado: Optional[ctk.CTkLabel] = None
         self._label_descripcion_estado: Optional[ctk.CTkLabel] = None
         self._label_sesion: Optional[ctk.CTkLabel] = None
         self._label_alerta_contador: Optional[ctk.CTkLabel] = None
         self._barra_progreso: Optional[ctk.CTkProgressBar] = None
-        self._indicador_estado: Optional[ctk.CTkFrame] = None
 
+        # Widget de preview de cámara
+        self._label_camara: Optional[ctk.CTkLabel] = None
+        self._imagen_placeholder: Optional[ctk.CTkImage] = None
+        self._fuente_frame_anotado: Optional[Callable] = None
+
+        # Estado interno
         self._sesion_inicio = time.time()
         self._angulo_actual = 0.0
         self._estado_actual = EstadoPostural.CALIBRANDO
+
+    def registrar_fuente_frame(self, callback: Callable) -> None:
+        """Inyecta el callback que provee el frame anotado de la cámara."""
+        self._fuente_frame_anotado = callback
+
+    # -------------------------------------------------------------------------
+    # Construcción de la ventana principal
+    # -------------------------------------------------------------------------
 
     def construir_ventana_principal(self) -> ctk.CTk:
         ctk.set_appearance_mode("dark")
@@ -64,18 +79,18 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
 
         self._ventana_principal = ctk.CTk()
         self._ventana_principal.title("SafeWork AI — Softech Perú")
-        self._ventana_principal.geometry("420x680")
+        self._ventana_principal.geometry("420x780")
         self._ventana_principal.resizable(False, False)
         self._ventana_principal.configure(fg_color=PALETA["fondo_oscuro"])
         self._ventana_principal.protocol("WM_DELETE_WINDOW", self._minimizar_al_tray)
 
         self._construir_header()
+        self._construir_panel_camara()
         self._construir_indicador_angular()
         self._construir_panel_metricas()
         self._construir_panel_estado()
         self._construir_footer()
 
-        # FIX: usar .after() para iniciar el loop DESPUÉS de que mainloop arranque
         self._ventana_principal.after(100, self._actualizar_ui_loop)
 
         return self._ventana_principal
@@ -85,13 +100,13 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
             self._ventana_principal,
             fg_color=PALETA["fondo_panel"],
             corner_radius=0,
-            height=80,
+            height=72,
         )
         frame_header.pack(fill="x", padx=0, pady=0)
         frame_header.pack_propagate(False)
 
         frame_interno = ctk.CTkFrame(frame_header, fg_color="transparent")
-        frame_interno.pack(expand=True, fill="both", padx=20, pady=12)
+        frame_interno.pack(expand=True, fill="both", padx=20, pady=10)
 
         ctk.CTkLabel(
             frame_interno,
@@ -107,28 +122,88 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
             text_color=PALETA["texto_secundario"],
         ).pack(anchor="w")
 
+    def _construir_panel_camara(self) -> None:
+        frame_camara = ctk.CTkFrame(
+            self._ventana_principal,
+            fg_color=PALETA["fondo_card"],
+            corner_radius=12,
+            border_width=1,
+            border_color=PALETA["borde_card"],
+        )
+        frame_camara.pack(fill="x", padx=20, pady=(12, 4))
+
+        ctk.CTkLabel(
+            frame_camara,
+            text="VISIÓN COMPUTACIONAL EN TIEMPO REAL",
+            font=ctk.CTkFont(family="Consolas", size=8, weight="bold"),
+            text_color=PALETA["texto_tenue"],
+        ).pack(pady=(10, 4))
+
+        # Frame de imagen con borde cyan
+        frame_borde = ctk.CTkFrame(
+            frame_camara,
+            fg_color=PALETA["acento_primario"],
+            corner_radius=8,
+            width=PREVIEW_ANCHO + 2,
+            height=PREVIEW_ALTO + 2,
+        )
+        frame_borde.pack(pady=(0, 10))
+        frame_borde.pack_propagate(False)
+
+        # Imagen placeholder inicial (fondo oscuro con mensaje)
+        placeholder_np = self._crear_frame_placeholder()
+        placeholder_pil = Image.fromarray(cv2.cvtColor(placeholder_np, cv2.COLOR_BGR2RGB))
+        self._imagen_placeholder = ctk.CTkImage(
+            light_image=placeholder_pil,
+            dark_image=placeholder_pil,
+            size=(PREVIEW_ANCHO, PREVIEW_ALTO),
+        )
+
+        self._label_camara = ctk.CTkLabel(
+            frame_borde,
+            image=self._imagen_placeholder,
+            text="",
+            fg_color=PALETA["fondo_oscuro"],
+            corner_radius=7,
+        )
+        self._label_camara.pack(fill="both", expand=True, padx=1, pady=1)
+
+    def _crear_frame_placeholder(self) -> np.ndarray:
+        canvas = np.full((PREVIEW_ALTO, PREVIEW_ANCHO, 3), (26, 14, 10), dtype=np.uint8)
+        cv2.putText(
+            canvas,
+            "Iniciando camara...",
+            (PREVIEW_ANCHO // 2 - 90, PREVIEW_ALTO // 2),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55,
+            (80, 80, 80),
+            1,
+            cv2.LINE_AA,
+        )
+        return canvas
+
     def _construir_indicador_angular(self) -> None:
         frame_angulo = ctk.CTkFrame(
             self._ventana_principal,
             fg_color=PALETA["fondo_card"],
             corner_radius=16,
         )
-        frame_angulo.pack(fill="x", padx=20, pady=(16, 8))
+        frame_angulo.pack(fill="x", padx=20, pady=(8, 4))
 
         ctk.CTkLabel(
             frame_angulo,
             text="ÁNGULO DE INCLINACIÓN CERVICAL",
             font=ctk.CTkFont(family="Consolas", size=9, weight="bold"),
             text_color=PALETA["texto_tenue"],
-        ).pack(pady=(16, 4))
+        ).pack(pady=(12, 2))
 
         self._label_angulo = ctk.CTkLabel(
             frame_angulo,
             text="0.0°",
-            font=ctk.CTkFont(family="Consolas", size=52, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=48, weight="bold"),
             text_color=PALETA["acento_primario"],
         )
-        self._label_angulo.pack(pady=4)
+        self._label_angulo.pack(pady=2)
 
         self._barra_progreso = ctk.CTkProgressBar(
             frame_angulo,
@@ -139,7 +214,7 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
             progress_color=PALETA["estado_optimo"],
         )
         self._barra_progreso.set(0)
-        self._barra_progreso.pack(pady=(4, 16))
+        self._barra_progreso.pack(pady=(2, 12))
 
     def _construir_panel_metricas(self) -> None:
         frame_grid = ctk.CTkFrame(
@@ -150,7 +225,6 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
         frame_grid.columnconfigure(0, weight=1)
         frame_grid.columnconfigure(1, weight=1)
 
-        # FIX: guardar labels retornados directamente en atributos de instancia
         self._label_sesion = self._crear_card_metrica(
             frame_grid, "DURACIÓN SESIÓN", "00:00:00", 0, 0
         )
@@ -181,7 +255,7 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
             text=titulo,
             font=ctk.CTkFont(family="Consolas", size=8, weight="bold"),
             text_color=PALETA["texto_tenue"],
-        ).pack(pady=(12, 2))
+        ).pack(pady=(10, 2))
 
         label_valor = ctk.CTkLabel(
             card,
@@ -189,7 +263,7 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
             font=ctk.CTkFont(family="Consolas", size=20, weight="bold"),
             text_color=PALETA["texto_primario"],
         )
-        label_valor.pack(pady=(0, 12))
+        label_valor.pack(pady=(0, 10))
 
         return label_valor
 
@@ -201,14 +275,14 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
             border_width=1,
             border_color=PALETA["borde_card"],
         )
-        frame_estado.pack(fill="x", padx=20, pady=8)
+        frame_estado.pack(fill="x", padx=20, pady=4)
 
         ctk.CTkLabel(
             frame_estado,
             text="ESTADO POSTURAL ACTUAL",
             font=ctk.CTkFont(family="Consolas", size=9, weight="bold"),
             text_color=PALETA["texto_tenue"],
-        ).pack(pady=(16, 8))
+        ).pack(pady=(12, 6))
 
         self._label_estado = ctk.CTkLabel(
             frame_estado,
@@ -216,7 +290,7 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
             font=ctk.CTkFont(size=16, weight="bold"),
             text_color=PALETA["acento_primario"],
         )
-        self._label_estado.pack(pady=(0, 8))
+        self._label_estado.pack(pady=(0, 4))
 
         self._label_descripcion_estado = ctk.CTkLabel(
             frame_estado,
@@ -225,14 +299,14 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
             text_color=PALETA["texto_secundario"],
             wraplength=340,
         )
-        self._label_descripcion_estado.pack(pady=(0, 16))
+        self._label_descripcion_estado.pack(pady=(0, 12))
 
     def _construir_footer(self) -> None:
         frame_footer = ctk.CTkFrame(
             self._ventana_principal,
             fg_color="transparent",
         )
-        frame_footer.pack(fill="x", padx=20, pady=(8, 20))
+        frame_footer.pack(fill="x", padx=20, pady=(4, 16))
 
         ctk.CTkLabel(
             frame_footer,
@@ -248,23 +322,54 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
             text_color=PALETA["texto_tenue"],
         ).pack(pady=(2, 0))
 
+    # -------------------------------------------------------------------------
+    # Loop de actualización de UI
+    # -------------------------------------------------------------------------
+
     def _actualizar_ui_loop(self) -> None:
         if self._ventana_principal:
             try:
                 self._refrescar_metricas_visuales()
+                self._actualizar_preview_camara()
             except Exception:
                 pass
-            self._ventana_principal.after(500, self._actualizar_ui_loop)
+            # Métricas cada 500ms, cámara se actualiza en su propio paso
+            self._ventana_principal.after(100, self._actualizar_ui_loop)
+
+    def _actualizar_preview_camara(self) -> None:
+        if not self._fuente_frame_anotado or not self._label_camara:
+            return
+
+        frame_bgr = self._fuente_frame_anotado()
+        if frame_bgr is None:
+            return
+
+        try:
+            frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+            # Redimensionar al tamaño del panel
+            frame_resized = cv2.resize(frame_rgb, (PREVIEW_ANCHO, PREVIEW_ALTO))
+            pil_img = Image.fromarray(frame_resized)
+            ctk_img = ctk.CTkImage(
+                light_image=pil_img,
+                dark_image=pil_img,
+                size=(PREVIEW_ANCHO, PREVIEW_ALTO),
+            )
+            self._label_camara.configure(image=ctk_img)
+            # Mantener referencia para evitar garbage collection
+            self._label_camara._current_image = ctk_img
+        except Exception:
+            pass
 
     def _refrescar_metricas_visuales(self) -> None:
         segundos_sesion = int(time.time() - self._sesion_inicio)
-        horas = segundos_sesion // 3600
-        minutos = (segundos_sesion % 3600) // 60
+        horas    = segundos_sesion // 3600
+        minutos  = (segundos_sesion % 3600) // 60
         segundos = segundos_sesion % 60
-        tiempo_formateado = f"{horas:02d}:{minutos:02d}:{segundos:02d}"
 
         if self._label_sesion:
-            self._label_sesion.configure(text=tiempo_formateado)
+            self._label_sesion.configure(
+                text=f"{horas:02d}:{minutos:02d}:{segundos:02d}"
+            )
 
         if self._label_angulo:
             self._label_angulo.configure(text=f"{self._angulo_actual:.1f}°")
@@ -316,7 +421,9 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
         if self._ventana_principal:
             self._ventana_principal.withdraw()
 
-    # --- Implementación de PuertoEmisionAlertas ---
+    # -------------------------------------------------------------------------
+    # Implementación de PuertoEmisionAlertas
+    # -------------------------------------------------------------------------
 
     def actualizar_estado_visual(self, postura: Postura) -> None:
         self._angulo_actual = postura.angulo_inclinacion_cuello
@@ -350,7 +457,9 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
     def esta_mostrando_alerta(self) -> bool:
         return self._mostrando_alerta
 
-    # --- Renderizado de ventanas de alerta ---
+    # -------------------------------------------------------------------------
+    # Ventanas de alerta
+    # -------------------------------------------------------------------------
 
     def _renderizar_alerta_postura(self, titulo: str, angulo: float) -> None:
         alerta = self._crear_ventana_alerta_base()
@@ -358,9 +467,9 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
         ctk.CTkLabel(
             alerta,
             text="⚠",
-            font=ctk.CTkFont(size=64),
+            font=ctk.CTkFont(size=56),
             text_color=PALETA["estado_critico"],
-        ).pack(pady=(30, 4))
+        ).pack(pady=(28, 4))
 
         ctk.CTkLabel(
             alerta,
@@ -385,9 +494,9 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
         ctk.CTkLabel(
             alerta,
             text="⏸",
-            font=ctk.CTkFont(size=64),
+            font=ctk.CTkFont(size=56),
             text_color=PALETA["estado_advertencia"],
-        ).pack(pady=(30, 4))
+        ).pack(pady=(28, 4))
 
         ctk.CTkLabel(
             alerta,
@@ -420,9 +529,7 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
         alerta.attributes("-topmost", True)
         alerta.resizable(False, False)
 
-        # Centrar en pantalla
-        ancho = 500
-        alto = 460
+        ancho, alto = 500, 440
         sw = alerta.winfo_screenwidth()
         sh = alerta.winfo_screenheight()
         x = (sw - ancho) // 2
@@ -438,12 +545,12 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
             text="PAUSA ACTIVA — TIEMPO RESTANTE",
             font=ctk.CTkFont(family="Consolas", size=9, weight="bold"),
             text_color=PALETA["texto_tenue"],
-        ).pack(pady=(12, 2))
+        ).pack(pady=(10, 2))
 
         label_tiempo = ctk.CTkLabel(
             alerta,
             text=f"{DURACION_PAUSA_ACTIVA_SEGUNDOS}s",
-            font=ctk.CTkFont(family="Consolas", size=44, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=40, weight="bold"),
             text_color=PALETA["acento_primario"],
         )
         label_tiempo.pack()
@@ -457,7 +564,7 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
             progress_color=PALETA["acento_primario"],
         )
         barra_pausa.set(1.0)
-        barra_pausa.pack(pady=10)
+        barra_pausa.pack(pady=8)
 
         ctk.CTkLabel(
             alerta,
