@@ -98,6 +98,7 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
         self._ultimo_total_mostrado = -1
         self._sesion_inicio = time.time()
         self._angulo = 0.0
+        self._advertencia_activa = False
         self._estado = EstadoPostural.CALIBRANDO
 
     def registrar_fuente_frame(self, cb: Callable) -> None:
@@ -303,15 +304,27 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
     def actualizar_estado_visual(self, postura: Postura) -> None:
         self._angulo = postura.angulo_inclinacion_cuello
         self._estado = postura.estado
+        if postura.estado in (EstadoPostural.OPTIMO, EstadoPostural.CALIBRANDO, EstadoPostural.AUSENTE):
+            self._advertencia_activa = False
 
     def emitir_notificacion_advertencia(self, postura: Postura) -> None:
         self._historial.registrar(
             "advertencia",
             postura.angulo_inclinacion_cuello,
-            f"Inclinación de {postura.angulo_inclinacion_cuello:.1f}° detectada",
+            f"Inclinacion de {postura.angulo_inclinacion_cuello:.1f} grados detectada",
         )
         self._total_alertas = self._historial.total()
-        _beep_advertencia()
+        if not self._advertencia_activa:
+            self._advertencia_activa = True
+            threading.Thread(target=self._loop_sonido_advertencia, daemon=True).start()
+
+    def _loop_sonido_advertencia(self) -> None:
+        while self._advertencia_activa:
+            _beep_advertencia()
+            for _ in range(200):
+                if not self._advertencia_activa:
+                    return
+                time.sleep(0.1)
 
     def emitir_alerta_postura_critica(self, postura: Postura) -> None:
         with self._lock:
