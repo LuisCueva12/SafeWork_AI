@@ -1,15 +1,14 @@
 from __future__ import annotations
 import time
 import threading
-from ...domain.entities.postura import EstadoPostural, LecturaCorporal, Postura
+from ...domain.entities.postura import EstadoAlerta, LecturaHibrida, EstadoFisico
 from ...domain.entities.trabajador import SesionTrabajador
-from ...domain.reglas.calculo_postural import transformar_lectura_en_postura
+from ...domain.reglas.calculo_postural import analizar_lectura_hibrida
 from ...domain.puertos.puerto_captura_corporal import PuertoCapturaCorporal
 from ...domain.puertos.puerto_emision_alertas import PuertoEmisionAlertas
 
 INTERVALO_MUESTREO = 0.1
 DURACION_CALIBRACION = 5
-
 
 class AnalizarPosturaUseCase:
     def __init__(self, captura_corporal: PuertoCapturaCorporal, emision_alertas: PuertoEmisionAlertas) -> None:
@@ -19,7 +18,6 @@ class AnalizarPosturaUseCase:
         self._ejecutando = False
         self._calibrando = True
         self._inicio_calibracion = time.time()
-        self._estado_previo = EstadoPostural.CALIBRANDO
 
     def iniciar_monitoreo(self) -> None:
         self._captura.iniciar_captura()
@@ -35,11 +33,26 @@ class AnalizarPosturaUseCase:
 
     def _ciclo(self) -> None:
         while self._ejecutando:
+            lectura = self._captura.obtener_lectura_corporal()
+            
             if self._en_calibracion():
+                if lectura and lectura.cuerpo_detectado and lectura.rostro_detectado:
+                    if lectura.nariz.es_confiable() and lectura.hombro_izquierdo.es_confiable() and lectura.hombro_derecho.es_confiable():
+                        h_y = (lectura.hombro_izquierdo.y + lectura.hombro_derecho.y) / 2
+                        ancho = abs(lectura.hombro_izquierdo.x - lectura.hombro_derecho.x)
+                        if ancho > 0:
+                            ratio = (h_y - lectura.nariz.y) / ancho
+                            n = self._sesion.muestras_calibracion
+                            self._sesion.base_ancho_hombros = (self._sesion.base_ancho_hombros * n + ancho) / (n + 1)
+                            self._sesion.base_ratio_y = (self._sesion.base_ratio_y * n + ratio) / (n + 1)
+                            self._sesion.base_ancho_cara = (self._sesion.base_ancho_cara * n + lectura.ancho_cara) / (n + 1)
+                            self._sesion.muestras_calibracion += 1
+
+                self._alertas.actualizar_estado_visual(EstadoFisico(0, 0, 0, 0, EstadoAlerta.CALIBRANDO))
                 time.sleep(INTERVALO_MUESTREO)
                 continue
-            lectura = self._captura.obtener_lectura_corporal()
-            if lectura is None or not lectura.tiene_lecturas_confiables():
+            
+            if lectura is None or (not lectura.rostro_detectado and not lectura.cuerpo_detectado):
                 self._manejar_ausencia()
             else:
                 self._procesar(lectura)
@@ -55,41 +68,17 @@ class AnalizarPosturaUseCase:
 
     def _manejar_ausencia(self) -> None:
         if self._sesion.segundos_sin_deteccion() > 5:
-            self._alertas.actualizar_estado_visual(Postura(0, 0, EstadoPostural.AUSENTE))
-            self._sesion.registrar_correccion_postural()
-            self._estado_previo = EstadoPostural.AUSENTE
+            self._alertas.actualizar_estado_visual(EstadoFisico(0, 0, 0, 0, EstadoAlerta.AUSENTE))
 
-    def _procesar(self, lectura: LecturaCorporal) -> None:
-        self._sesion.registrar_movimiento()
+    def _procesar(self, lectura: LecturaHibrida) -> None:
         self._sesion.registrar_deteccion()
 
-        segundos = self._sesion.segundos_en_desviacion_continua()
-        postura = transformar_lectura_en_postura(lectura, segundos)
-        self._alertas.actualizar_estado_visual(postura)
-
-        if postura.estado == EstadoPostural.OPTIMO:
-            self._sesion.registrar_correccion_postural()
-        else:
-            self._sesion.registrar_inicio_desviacion()
-
-        # Detectar transición OPTIMO/CALIBRANDO/AUSENTE → ADVERTENCIA (sonido + registro)
-        estado_anterior_era_bueno = self._estado_previo in (
-            EstadoPostural.OPTIMO, EstadoPostural.CALIBRANDO, EstadoPostural.AUSENTE
-        )
-        if postura.estado == EstadoPostural.ADVERTENCIA and estado_anterior_era_bueno:
-            self._alertas.emitir_notificacion_advertencia(postura)
-
-        self._estado_previo = postura.estado
+        estado_fisico = analizar_lectura_hibrida(lectura, self._sesion)
+        self._alertas.actualizar_estado_visual(estado_fisico)
 
         if self._alertas.esta_mostrando_alerta():
             return
 
-        if self._sesion.supera_umbral_inactividad():
+        if estado_fisico.requiere_bloqueo():
             self._sesion.incrementar_contador_alertas()
-            self._alertas.emitir_alerta_inactividad(self._sesion.minutos_sin_movimiento())
-            self._sesion.registrar_movimiento()
-            return
-
-        if postura.requiere_intervencion_inmediata():
-            self._sesion.incrementar_contador_alertas()
-            self._alertas.emitir_alerta_postura_critica(postura)
+            self._alertas.emitir_alerta_bloqueante(estado_fisico)

@@ -40,6 +40,9 @@ def construir_ejecutable() -> None:
         "--hidden-import=cv2",
         "--hidden-import=winsound",
         "--hidden-import=numpy",
+        "--hidden-import=pyttsx3",
+        "--hidden-import=pyttsx3.drivers",
+        "--hidden-import=pyttsx3.drivers.sapi5",
         "--collect-all=mediapipe",
         "--collect-all=customtkinter",
     ]
@@ -59,16 +62,16 @@ def construir_ejecutable() -> None:
         exe_path = os.path.join(CARPETA_DIST, f"{NOMBRE_EXE}.exe")
         if os.path.exists(exe_path):
             tam = os.path.getsize(exe_path) / (1024 * 1024)
-            print(f"\n[BUILD] ✓ Ejecutable generado: {exe_path} ({tam:.1f} MB)")
-        print("[BUILD] ✓ Fase A completa. Ejecute Inno Setup para generar el instalador.")
+            print(f"\n[BUILD] Ejecutable generado: {exe_path} ({tam:.1f} MB)")
+        print("[BUILD] Fase A completa. Ejecute Inno Setup para generar el instalador.")
     else:
-        print("[BUILD] ✗ Error en el empaquetado. Revise los mensajes anteriores.")
+        print("[BUILD] Error en el empaquetado. Revise los mensajes anteriores.")
         sys.exit(1)
 
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("  SAFEWORK AI v1.0 — Softech Perú — Build Script")
+    print("  SAFEWORK AI v2.0 — Softech Perú — Build Script")
     print("=" * 60)
     limpiar_builds_anteriores()
     construir_ejecutable()

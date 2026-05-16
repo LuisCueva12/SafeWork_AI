@@ -3,15 +3,17 @@ from dataclasses import dataclass, field
 from enum import Enum
 from datetime import datetime
 
-class EstadoPostural(Enum):
+class EstadoAlerta(Enum):
     OPTIMO = "OPTIMO"
-    ADVERTENCIA = "ADVERTENCIA"
-    CRITICO = "CRITICO"
+    ADVERTENCIA_SUEÑO = "ADVERTENCIA (Bostezos)"
+    FATIGA_EXTREMA = "FATIGA EXTREMA (Ojos Cerrados)"
+    CABECEO = "CABECEO (Caída de Cabeza)"
+    MALA_POSTURA = "MALA POSTURA (Inclinación)"
     CALIBRANDO = "CALIBRANDO"
     AUSENTE = "AUSENTE"
 
 @dataclass
-class CoordenadaCorporal:
+class Coordenada:
     x: float
     y: float
     z: float
@@ -21,30 +23,32 @@ class CoordenadaCorporal:
         return self.visibilidad >= 0.6
 
 @dataclass
-class LecturaCorporal:
-    nariz: CoordenadaCorporal
-    hombro_izquierdo: CoordenadaCorporal
-    hombro_derecho: CoordenadaCorporal
-    oreja_izquierda: CoordenadaCorporal
-    oreja_derecha: CoordenadaCorporal
-    cadera_izquierda: CoordenadaCorporal
-    cadera_derecha: CoordenadaCorporal
-    timestamp: datetime = field(default_factory=datetime.now)
+class LecturaHibrida:
+    # Métricas faciales
+    ear: float
+    mar: float
+    nariz_y: float
+    ancho_cara: float
+    rostro_detectado: bool = False
+    
+    # Puntos corporales
+    nariz: Coordenada = field(default_factory=lambda: Coordenada(0,0,0,0))
+    hombro_izquierdo: Coordenada = field(default_factory=lambda: Coordenada(0,0,0,0))
+    hombro_derecho: Coordenada = field(default_factory=lambda: Coordenada(0,0,0,0))
+    oreja_izquierda: Coordenada = field(default_factory=lambda: Coordenada(0,0,0,0))
+    oreja_derecha: Coordenada = field(default_factory=lambda: Coordenada(0,0,0,0))
+    cuerpo_detectado: bool = False
 
-    def tiene_lecturas_confiables(self) -> bool:
-        return all([
-            self.nariz.es_confiable(),
-            self.hombro_izquierdo.es_confiable(),
-            self.hombro_derecho.es_confiable(),
-        ])
+    timestamp: datetime = field(default_factory=datetime.now)
 
 @dataclass
-class Postura:
-    angulo_inclinacion_cuello: float
-    angulo_inclinacion_lateral: float
-    estado: EstadoPostural
+class EstadoFisico:
+    ear: float
+    mar: float
+    angulo_cuello: float
+    angulo_lateral: float
+    estado: EstadoAlerta
     timestamp: datetime = field(default_factory=datetime.now)
-    segundos_en_estado_actual: float = 0.0
 
-    def requiere_intervencion_inmediata(self) -> bool:
-        return self.estado == EstadoPostural.CRITICO
+    def requiere_bloqueo(self) -> bool:
+        return self.estado in (EstadoAlerta.FATIGA_EXTREMA, EstadoAlerta.CABECEO, EstadoAlerta.ADVERTENCIA_SUEÑO)
