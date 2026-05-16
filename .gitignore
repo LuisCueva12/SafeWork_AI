@@ -1,0 +1,26 @@
+# Entornos virtuales
+venv/
+env/
+.venv/
+
+# PyInstaller / Build
+build/
+dist/
+*.spec
+
+# Caché de Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Configuración del IDE / Editor
+.vscode/
+.idea/
+
+# Archivos de la base de datos o historial local
+historial.json
+*.log
+
+# Archivos temporales o de SO
+.DS_Store
+Thumbs.db

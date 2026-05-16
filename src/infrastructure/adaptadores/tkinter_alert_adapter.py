@@ -104,14 +104,25 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
     def registrar_fuente_frame(self, cb: Callable) -> None:
         self._fuente_frame = cb
 
+    def registrar_callback_cierre(self, cb: Callable) -> None:
+        self._al_cerrar_callback = cb
+
     def construir_ventana_principal(self) -> ctk.CTk:
         ctk.set_appearance_mode("dark")
         self._ventana = ctk.CTk()
         self._ventana.title("SafeWork AI — Softech Perú")
-        self._ventana.geometry("500x920")
-        self._ventana.minsize(400, 650)
+        self._ventana.geometry("420x720")
+        self._ventana.minsize(380, 600)
         self._ventana.configure(fg_color=PALETA["fondo_oscuro"])
-        self._ventana.protocol("WM_DELETE_WINDOW", self._minimizar)
+        self._al_cerrar_callback = None
+        
+        def _cerrar():
+            if self._al_cerrar_callback:
+                self._al_cerrar_callback()
+            else:
+                self._ventana.destroy()
+                
+        self._ventana.protocol("WM_DELETE_WINDOW", _cerrar)
 
         self._scroll = ctk.CTkScrollableFrame(
             self._ventana, fg_color=PALETA["fondo_oscuro"],

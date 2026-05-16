@@ -11,14 +11,13 @@ def ejecutar() -> None:
     ui.registrar_fuente_frame(cam.obtener_frame_anotado)
     uc = AnalizarPosturaUseCase(cam, ui)
     v = ui.construir_ventana_principal()
-    v.withdraw()
-
     def mostrar(): v.after(0, v.deiconify)
     def salir():
         uc.detener_monitoreo()
         tray.detener_tray()
         v.after(0, v.destroy)
 
+    ui.registrar_callback_cierre(salir)
     tray = SystemTrayAdapter(mostrar, salir)
     v.after(300, lambda: threading.Thread(target=uc.iniciar_monitoreo, daemon=True).start())
     v.after(800, tray.iniciar_tray)
