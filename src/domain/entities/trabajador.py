@@ -12,17 +12,17 @@ class SesionTrabajador:
     inicio_sesion: datetime = field(default_factory=datetime.now)
     ultima_deteccion_exitosa: datetime = field(default_factory=datetime.now)
     
-    # Sueño
     inicio_ojos_cerrados: datetime | None = None
     inicio_cabeceo: datetime | None = None
     historial_bostezos: list[datetime] = field(default_factory=list)
     bostezo_actual_activo: bool = False
     
-    # Postura y Calibración
     inicio_mala_postura: datetime | None = None
     base_ancho_hombros: float = 0.0
     base_ratio_y: float = 0.0
     base_ancho_cara: float = 0.0
+    base_ear: float = 0.0
+    base_mar: float = 0.0
     muestras_calibracion: int = 0
     
     total_alertas_emitidas: int = 0

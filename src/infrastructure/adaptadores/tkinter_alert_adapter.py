@@ -86,6 +86,7 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
         self._ultimo_total_mostrado = -1
         self._sesion_inicio = time.time()
         self._estado_actual = EstadoAlerta.CALIBRANDO
+        self._voz_habilitada = True
 
     def registrar_fuente_frame(self, cb: Callable) -> None:
         self._fuente_frame = cb
@@ -132,7 +133,24 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
         f = ctk.CTkFrame(self._scroll, fg_color=PALETA["fondo_panel"], corner_radius=12)
         f.pack(fill="x", pady=(0, 4))
         ctk.CTkLabel(f, text="⬡  SAFEWORK AI", font=ctk.CTkFont(family="Consolas", size=18, weight="bold"), text_color=PALETA["acento_primario"]).pack(anchor="w", padx=20, pady=(14, 2))
-        ctk.CTkLabel(f, text="Softech Perú  ·  Híbrido (Sueño y Postura)", font=ctk.CTkFont(size=11), text_color=PALETA["texto_secundario"]).pack(anchor="w", padx=20, pady=(0, 14))
+        ctk.CTkLabel(f, text="Softech Perú  ·  Híbrido (Sueño y Postura)", font=ctk.CTkFont(size=11), text_color=PALETA["texto_secundario"]).pack(anchor="w", padx=20, pady=(0, 6))
+        
+        def toggle_voz():
+            self._voz_habilitada = bool(self._switch_voz.get())
+            if self._voz_habilitada:
+                _hablar("Asistente de voz activado")
+            else:
+                _hablar("Asistente de voz desactivado")
+
+        self._switch_voz = ctk.CTkSwitch(
+            f, text="Asistente de Voz", 
+            command=toggle_voz,
+            font=ctk.CTkFont(size=10),
+            progress_color=PALETA["acento_primario"],
+            text_color=PALETA["texto_secundario"]
+        )
+        self._switch_voz.select()
+        self._switch_voz.pack(anchor="w", padx=20, pady=(0, 14))
 
     def _construir_panel_camara(self) -> None:
         outer = ctk.CTkFrame(self._scroll, fg_color=PALETA["fondo_card"], corner_radius=12, border_width=1, border_color=PALETA["borde_card"])
@@ -268,8 +286,17 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
         }.get(self._estado_actual, (PALETA["acento_primario"], "◌", ""))
 
     def actualizar_estado_visual(self, estado: EstadoFisico) -> None:
+        if estado.estado == EstadoAlerta.CALIBRANDO and self._estado_actual != EstadoAlerta.CALIBRANDO:
+            if self._voz_habilitada:
+                _hablar("Iniciando calibración de sensores. Por favor, siéntate erguido y mira hacia la pantalla.")
+        elif self._estado_actual == EstadoAlerta.CALIBRANDO and estado.estado != EstadoAlerta.CALIBRANDO:
+            if self._voz_habilitada:
+                _hablar("Calibración completada con éxito. SafeWork está monitoreando en segundo plano.")
+        
         if estado.estado == EstadoAlerta.MALA_POSTURA and self._estado_actual != EstadoAlerta.MALA_POSTURA:
-            _hablar("Atención. Llevas tiempo en mala postura. Por favor, corrige tu espalda.")
+            if self._voz_habilitada:
+                _hablar("Atención. Llevas tiempo en mala postura. Por favor, corrige tu espalda.")
+        
         self._estado_actual = estado.estado
 
     def emitir_alerta_bloqueante(self, estado: EstadoFisico) -> None:
@@ -283,22 +310,172 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
         )
         self._total_alertas = self._historial.total()
         
-        mensaje_voz = "Atención. Por favor, toma un descanso."
-        if estado.estado == EstadoAlerta.FATIGA_EXTREMA:
-            mensaje_voz = "Atención, se detectaron ojos cerrados prolongadamente. Por favor descansa."
-        elif estado.estado == EstadoAlerta.CABECEO:
-            mensaje_voz = "Atención, se detectó un cabeceo. Toma una pausa."
-        elif estado.estado == EstadoAlerta.MALA_POSTURA:
-            mensaje_voz = "Atención, mejora tu postura."
-            
-        _hablar(mensaje_voz)
-        
         if self._ventana:
-            self._ventana.after(10000, self._desbloquear_alerta)
+            self._ventana.after(0, lambda: self._mostrar_ventana_pausa_activa(estado))
 
-    def _desbloquear_alerta(self) -> None:
+    def _mostrar_ventana_pausa_activa(self, estado: EstadoFisico) -> None:
+        self._alerta_win = ctk.CTkToplevel(self._ventana)
+        self._alerta_win.title("Pausa Activa - SafeWork AI")
+        self._alerta_win.geometry("450x420")
+        self._alerta_win.configure(fg_color=PALETA["fondo_oscuro"])
+        self._alerta_win.resizable(False, False)
+        self._alerta_win.attributes("-topmost", True)
+        self._alerta_win.protocol("WM_DELETE_WINDOW", self._cerrar_pausa_activa)
+        
+        try:
+            screen_w = self._alerta_win.winfo_screenwidth()
+            screen_h = self._alerta_win.winfo_screenheight()
+            x = (screen_w - 450) // 2
+            y = (screen_h - 420) // 2
+            self._alerta_win.geometry(f"450x420+{x}+{y}")
+        except:
+            pass
+
+        es_postura = estado.estado == EstadoAlerta.MALA_POSTURA
+        
+        if es_postura:
+            tipo_alerta = "ALERTA ERGONÓMICA"
+            color_alerta = PALETA["estado_critico"]
+            titulo_ejercicio = "Rutina: Estiramiento de Cuello y Hombros"
+            pasos = [
+                "1. Rotación de Hombros: Gira los hombros hacia atrás 5 veces lentamente.",
+                "2. Alineación Cervical: Lleva tu cabeza con la barbilla hacia atrás erguida.",
+                "3. Inclinación Lateral: Inclina la oreja derecha al hombro, luego la izquierda.",
+                "4. Estiramiento Lumbar: Apoya bien la espalda y estira los brazos al frente."
+            ]
+            mensaje_voz = "Atención. Se detectó mala postura sostenida. Iniciemos una pausa de estiramiento para tus hombros y cuello."
+        else:
+            tipo_alerta = "ALERTA DE FATIGA Y SUEÑO"
+            color_alerta = PALETA["estado_critico"]
+            titulo_ejercicio = "Rutina: Relajación Ocular y Enfoque"
+            pasos = [
+                "1. Regla 20-20-20: Mira un objeto a 6 metros por 20 segundos.",
+                "2. Parpadeo Consciente: Parpadea suavemente 10 veces seguidas.",
+                "3. Oxigenación: Inhala profundo durante 4 segundos y exhala despacio.",
+                "4. Estiramiento Cervical: Gira la cabeza en círculos suaves hacia los lados."
+            ]
+            mensaje_voz = "Atención. Se detectaron signos de fatiga. Por favor realiza una pausa de relajación visual. Cierra tus ojos y parpadea."
+
+        if self._voz_habilitada:
+            _hablar(mensaje_voz)
+
+        header = ctk.CTkFrame(self._alerta_win, fg_color=PALETA["fondo_panel"], corner_radius=12)
+        header.pack(fill="x", padx=20, pady=(20, 10))
+        
+        ctk.CTkLabel(
+            header, 
+            text=f"🚨  {tipo_alerta}", 
+            font=ctk.CTkFont(family="Consolas", size=14, weight="bold"), 
+            text_color=color_alerta
+        ).pack(anchor="w", padx=15, pady=(10, 2))
+        
+        ctk.CTkLabel(
+            header, 
+            text="Tómate un breve descanso para prevenir dolores físicos y fatiga.", 
+            font=ctk.CTkFont(size=11), 
+            text_color=PALETA["texto_secundario"]
+        ).pack(anchor="w", padx=15, pady=(0, 10))
+
+        ex_panel = ctk.CTkFrame(self._alerta_win, fg_color=PALETA["fondo_card"], corner_radius=12, border_width=1, border_color=PALETA["borde_card"])
+        ex_panel.pack(fill="both", expand=True, padx=20, pady=10)
+        
+        ctk.CTkLabel(
+            ex_panel, 
+            text=titulo_ejercicio, 
+            font=ctk.CTkFont(size=13, weight="bold"), 
+            text_color=PALETA["acento_primario"]
+        ).pack(anchor="w", padx=15, pady=(12, 6))
+        
+        for paso in pasos:
+            ctk.CTkLabel(
+                ex_panel, 
+                text=paso, 
+                font=ctk.CTkFont(size=11), 
+                text_color=PALETA["texto_primario"],
+                justify="left",
+                anchor="w"
+            ).pack(anchor="w", padx=20, pady=2)
+
+        self._segundos_restantes = 20
+        progress = ctk.CTkProgressBar(self._alerta_win, width=410, progress_color=PALETA["acento_primario"], fg_color=PALETA["fondo_panel"])
+        progress.pack(pady=(15, 2))
+        progress.set(1.0)
+
+        label_timer = ctk.CTkLabel(
+            self._alerta_win, 
+            text="Tiempo recomendado: 20s", 
+            font=ctk.CTkFont(family="Consolas", size=11), 
+            text_color=PALETA["texto_secundario"]
+        )
+        label_timer.pack(pady=2)
+
+        btn_panel = ctk.CTkFrame(self._alerta_win, fg_color="transparent")
+        btn_panel.pack(fill="x", padx=20, pady=(10, 20))
+        
+        btn_saltar = ctk.CTkButton(
+            btn_panel, 
+            text="Saltar Pausa", 
+            width=140,
+            fg_color=PALETA["fondo_panel"], 
+            hover_color=PALETA["borde_card"], 
+            text_color=PALETA["texto_secundario"], 
+            command=self._cerrar_pausa_activa
+        )
+        btn_saltar.pack(side="left")
+        
+        btn_completar = ctk.CTkButton(
+            btn_panel, 
+            text="Completar (20s)", 
+            width=250,
+            state="disabled", 
+            fg_color=PALETA["fondo_panel"], 
+            text_color=PALETA["texto_tenue"], 
+            command=self._completar_pausa_activa
+        )
+        btn_completar.pack(side="right")
+
+        def actualizar_timer():
+            if not self._alerta_win or not self._alerta_win.winfo_exists():
+                return
+            self._segundos_restantes -= 1
+            if self._segundos_restantes > 0:
+                try:
+                    label_timer.configure(text=f"Tiempo recomendado: {self._segundos_restantes}s")
+                    progress.set(self._segundos_restantes / 20.0)
+                    btn_completar.configure(text=f"Completar ({self._segundos_restantes}s)")
+                except:
+                    pass
+                self._alerta_win.after(1000, actualizar_timer)
+            else:
+                try:
+                    label_timer.configure(text="¡Pausa de estiramiento recomendada completada!", text_color=PALETA["estado_optimo"])
+                    progress.set(0.0)
+                    btn_completar.configure(
+                        text="¡Completar!", 
+                        state="normal", 
+                        fg_color=PALETA["estado_optimo"], 
+                        hover_color="#0D9488", 
+                        text_color="#FFFFFF"
+                    )
+                except:
+                    pass
+                if self._voz_habilitada:
+                    _hablar("Pausa completada. Excelente trabajo. Puedes continuar con tus actividades.")
+                
+        self._alerta_win.after(1000, actualizar_timer)
+
+    def _cerrar_pausa_activa(self) -> None:
+        if self._alerta_win:
+            try:
+                self._alerta_win.destroy()
+            except:
+                pass
+            self._alerta_win = None
         with self._lock:
             self._mostrando_alerta = False
+
+    def _completar_pausa_activa(self) -> None:
+        self._cerrar_pausa_activa()
 
     def esta_mostrando_alerta(self) -> bool:
         return self._mostrando_alerta

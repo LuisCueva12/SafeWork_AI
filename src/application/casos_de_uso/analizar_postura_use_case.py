@@ -46,6 +46,8 @@ class AnalizarPosturaUseCase:
                             self._sesion.base_ancho_hombros = (self._sesion.base_ancho_hombros * n + ancho) / (n + 1)
                             self._sesion.base_ratio_y = (self._sesion.base_ratio_y * n + ratio) / (n + 1)
                             self._sesion.base_ancho_cara = (self._sesion.base_ancho_cara * n + lectura.ancho_cara) / (n + 1)
+                            self._sesion.base_ear = (self._sesion.base_ear * n + lectura.ear) / (n + 1)
+                            self._sesion.base_mar = (self._sesion.base_mar * n + lectura.mar) / (n + 1)
                             self._sesion.muestras_calibracion += 1
 
                 self._alertas.actualizar_estado_visual(EstadoFisico(0, 0, 0, 0, EstadoAlerta.CALIBRANDO))

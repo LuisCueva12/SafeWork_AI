@@ -31,22 +31,18 @@ def calcular_postura(lectura: LecturaHibrida, sesion: SesionTrabajador) -> tuple
         hombro_medio_y = (lectura.hombro_izquierdo.y + lectura.hombro_derecho.y) / 2
         ancho_hombros = abs(lectura.hombro_izquierdo.x - lectura.hombro_derecho.x)
         
-        # Inclinación hacia adelante basada en aprendizaje (baselines)
         if ancho_hombros > 0 and sesion.base_ratio_y > 0:
             ratio_y = (hombro_medio_y - lectura.nariz.y) / ancho_hombros
             
-            # Si el ratio baja sustancialmente respecto a la base (ej. la nariz cae más cerca del pecho)
             diferencia_ratio = sesion.base_ratio_y - ratio_y
             if diferencia_ratio > 0:
-                cuello = diferencia_ratio * 200.0 # Multiplicador para escalar a "grados"
+                cuello = diferencia_ratio * 200.0
             
-            # Si se pega demasiado a la cámara, usamos la cara porque los hombros pueden salirse del encuadre
             if sesion.base_ancho_cara > 0 and lectura.ancho_cara > 0:
                 crecimiento_cara = lectura.ancho_cara / sesion.base_ancho_cara
-                if crecimiento_cara > 1.30: # 30% más cerca de la pantalla que en la calibración
+                if crecimiento_cara > 1.30:
                     cuello = max(cuello, 25.0) 
             
-        # Inclinación lateral robusta (diferencia de ángulos entre orejas y hombros)
         if lectura.oreja_izquierda.es_confiable() and lectura.oreja_derecha.es_confiable():
             angulo_hombros = calcular_angulo_horizontal(lectura.hombro_izquierdo, lectura.hombro_derecho)
             angulo_orejas = calcular_angulo_horizontal(lectura.oreja_izquierda, lectura.oreja_derecha)
@@ -60,14 +56,16 @@ def analizar_lectura_hibrida(lectura: LecturaHibrida, sesion: SesionTrabajador) 
     if not lectura.rostro_detectado and not lectura.cuerpo_detectado:
         return EstadoFisico(0, 0, 0, 0, EstadoAlerta.AUSENTE)
 
-    # 1. EVALUAR SUEÑO
     if lectura.rostro_detectado:
-        if lectura.ear <= UMBRAL_EAR_CERRADO:
+        umbral_ear = sesion.base_ear * 0.55 if sesion.base_ear > 0 else UMBRAL_EAR_CERRADO
+        umbral_mar = sesion.base_mar * 2.20 if sesion.base_mar > 0 else UMBRAL_MAR_BOSTEZO
+
+        if lectura.ear <= umbral_ear:
             sesion.registrar_ojos_cerrados()
         else:
             sesion.registrar_ojos_abiertos()
 
-        if lectura.mar >= UMBRAL_MAR_BOSTEZO:
+        if lectura.mar >= umbral_mar:
             sesion.iniciar_bostezo()
         else:
             sesion.finalizar_bostezo()
@@ -88,16 +86,12 @@ def analizar_lectura_hibrida(lectura: LecturaHibrida, sesion: SesionTrabajador) 
 
     estado = EstadoAlerta.OPTIMO
 
-    # Prioridad 1: Fatiga Extrema
     if sesion.segundos_ojos_cerrados() >= UMBRAL_OJOS_CERRADOS_SEGUNDOS:
         estado = EstadoAlerta.FATIGA_EXTREMA
-    # Prioridad 2: Cabeceo Crítico
     elif sesion.segundos_cabeceo() >= UMBRAL_CABECEO_SEGUNDOS:
         estado = EstadoAlerta.CABECEO
-    # Prioridad 3: Mala Postura Sostenida (> 5 segundos continuos)
     elif sesion.segundos_mala_postura() >= 5.0:
         estado = EstadoAlerta.MALA_POSTURA
-    # Prioridad 4: Advertencia Preventiva (Bostezos)
     elif sesion.cantidad_bostezos_recientes() >= MAX_BOSTEZOS_PERMITIDOS:
         estado = EstadoAlerta.ADVERTENCIA_SUEÑO
 

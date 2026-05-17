@@ -113,7 +113,7 @@ class MediaPipeCameraAdapter(PuertoCapturaCorporal):
             lectura.oreja_izquierda = mpc_a_c(INDICE_OREJA_IZQ_POSE)
             lectura.oreja_derecha = mpc_a_c(INDICE_OREJA_DER_POSE)
 
-        self._ultimo_frame_anotado = self._dibujar(frame_bgr, res_face.face_landmarks if rostro_detectado else None, res_pose.pose_landmarks if cuerpo_detectado else None)
+        self._ultimo_frame_anotado = self._dibujar(frame_bgr, res_face.face_landmarks if rostro_detectado else None, res_pose.pose_landmarks if cuerpo_detectado else None, lectura)
         return lectura
 
     def obtener_ultimo_frame(self) -> Optional[np.ndarray]:
@@ -132,11 +132,74 @@ class MediaPipeCameraAdapter(PuertoCapturaCorporal):
     def esta_activo(self) -> bool:
         return self._captura_video is not None and self._captura_video.isOpened()
 
-    def _dibujar(self, frame_bgr: np.ndarray, face_lms, pose_lms) -> np.ndarray:
+    def _dibujar(self, frame_bgr: np.ndarray, face_lms, pose_lms, lectura: LecturaHibrida) -> np.ndarray:
         ancho = frame_bgr.shape[1]
+        alto = frame_bgr.shape[0]
         canvas = cv2.flip(frame_bgr.copy(), 1)
+        
+        def proyectar(lm) -> Tuple[int, int]:
+            return int((1.0 - lm.x) * ancho), int(lm.y * alto)
+
+        if pose_lms and len(pose_lms[0]) > max(INDICE_HOMBRO_IZQ_POSE, INDICE_HOMBRO_DER_POSE):
+            sh_l = pose_lms[0][INDICE_HOMBRO_IZQ_POSE]
+            sh_r = pose_lms[0][INDICE_HOMBRO_DER_POSE]
+            if sh_l.visibility >= 0.5 and sh_r.visibility >= 0.5:
+                p_l = proyectar(sh_l)
+                p_r = proyectar(sh_r)
+                
+                dy = abs(p_r[1] - p_l[1])
+                dx = abs(p_r[0] - p_l[0])
+                dist = math.sqrt(dx**2 + dy**2)
+                is_tilted = (dy / dist > 0.08) if dist > 0 else False
+                
+                color_linea = (68, 68, 239) if is_tilted else (129, 185, 16)
+                
+                cv2.line(canvas, p_l, p_r, color_linea, 2, cv2.LINE_AA)
+                for p in (p_l, p_r):
+                    cv2.circle(canvas, p, 5, (255, 212, 0), -1)
+                    cv2.circle(canvas, p, 8, (255, 212, 0), 1, cv2.LINE_AA)
+                
+                if len(pose_lms[0]) > INDICE_NARIZ_POSE:
+                    nz = pose_lms[0][INDICE_NARIZ_POSE]
+                    if nz.visibility >= 0.5:
+                        p_nz = proyectar(nz)
+                        p_mid = ((p_l[0] + p_r[0]) // 2, (p_l[1] + p_r[1]) // 2)
+                        cv2.line(canvas, p_nz, p_mid, (255, 255, 255), 1, cv2.LINE_AA)
+
+        if face_lms and len(face_lms[0]) > 0:
+            f_lms = face_lms[0]
+            
+            color_ojos = (68, 68, 239) if lectura.ear <= 0.15 else (255, 212, 0)
+            
+            izq_pts = [proyectar(f_lms[i]) for i in OJO_IZQ_PUNTOS if i < len(f_lms)]
+            if len(izq_pts) > 1:
+                cv2.polylines(canvas, [np.array(izq_pts, dtype=np.int32)], True, color_ojos, 1, cv2.LINE_AA)
+                
+            der_pts = [proyectar(f_lms[i]) for i in OJO_DER_PUNTOS if i < len(f_lms)]
+            if len(der_pts) > 1:
+                cv2.polylines(canvas, [np.array(der_pts, dtype=np.int32)], True, color_ojos, 1, cv2.LINE_AA)
+                
+            color_boca = (68, 68, 239) if lectura.mar >= 0.40 else (129, 185, 16)
+            
+            boca_pts = [proyectar(f_lms[i]) for i in BOCA_PUNTOS if i < len(f_lms)]
+            if len(boca_pts) > 1:
+                cv2.polylines(canvas, [np.array(boca_pts, dtype=np.int32)], True, color_boca, 1, cv2.LINE_AA)
+
         cv2.rectangle(canvas, (0, 0), (ancho, 32), (10, 14, 26), -1)
-        cv2.putText(canvas, "SAFEWORK AI | SUEÑO + POSTURA (LIMPIO)", (10, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 212, 255), 1)
+        cv2.putText(canvas, "⬡ SAFEWORK AI | MONITOR ACTIVO", (10, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 212, 0), 1, cv2.LINE_AA)
+        
+        overlay_y = 55
+        if lectura.rostro_detectado:
+            cv2.putText(canvas, f"EAR: {lectura.ear:.2f}", (ancho - 90, overlay_y), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 212, 0), 1, cv2.LINE_AA)
+            cv2.putText(canvas, f"MAR: {lectura.mar:.2f}", (ancho - 90, overlay_y + 16), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 212, 0), 1, cv2.LINE_AA)
+        else:
+            cv2.putText(canvas, "SIN ROSTRO", (ancho - 95, overlay_y), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (68, 68, 239), 1, cv2.LINE_AA)
+
+        if lectura.cuerpo_detectado:
+            cv2.putText(canvas, "ESQUELETO: OK", (10, overlay_y), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (129, 185, 16), 1, cv2.LINE_AA)
+        else:
+            cv2.putText(canvas, "SIN CUERPO", (10, overlay_y), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (68, 68, 239), 1, cv2.LINE_AA)
+
         return canvas
 
     def _distancia(self, p1, p2) -> float:

@@ -24,14 +24,12 @@ class Coordenada:
 
 @dataclass
 class LecturaHibrida:
-    # Métricas faciales
     ear: float
     mar: float
     nariz_y: float
     ancho_cara: float
     rostro_detectado: bool = False
     
-    # Puntos corporales
     nariz: Coordenada = field(default_factory=lambda: Coordenada(0,0,0,0))
     hombro_izquierdo: Coordenada = field(default_factory=lambda: Coordenada(0,0,0,0))
     hombro_derecho: Coordenada = field(default_factory=lambda: Coordenada(0,0,0,0))
@@ -51,4 +49,4 @@ class EstadoFisico:
     timestamp: datetime = field(default_factory=datetime.now)
 
     def requiere_bloqueo(self) -> bool:
-        return self.estado in (EstadoAlerta.FATIGA_EXTREMA, EstadoAlerta.CABECEO, EstadoAlerta.ADVERTENCIA_SUEÑO)
+        return self.estado in (EstadoAlerta.FATIGA_EXTREMA, EstadoAlerta.CABECEO, EstadoAlerta.MALA_POSTURA, EstadoAlerta.ADVERTENCIA_SUEÑO)
