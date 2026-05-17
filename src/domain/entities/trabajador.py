@@ -25,6 +25,11 @@ class SesionTrabajador:
     base_mar: float = 0.0
     muestras_calibracion: int = 0
     
+    ultimo_ear_filtrado: float = 0.0
+    ultimo_mar_filtrado: float = 0.0
+    ultimo_cuello_filtrado: float = 0.0
+    ultimo_lateral_filtrado: float = 0.0
+    
     total_alertas_emitidas: int = 0
 
     def registrar_deteccion(self) -> None:

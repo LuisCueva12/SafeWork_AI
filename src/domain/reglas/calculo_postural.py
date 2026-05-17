@@ -56,22 +56,49 @@ def analizar_lectura_hibrida(lectura: LecturaHibrida, sesion: SesionTrabajador) 
     if not lectura.rostro_detectado and not lectura.cuerpo_detectado:
         return EstadoFisico(0, 0, 0, 0, EstadoAlerta.AUSENTE)
 
+    alpha = 0.30
+    raw_ear = lectura.ear if lectura.rostro_detectado else 0.0
+    raw_mar = lectura.mar if lectura.rostro_detectado else 0.0
+
+    if sesion.ultimo_ear_filtrado == 0.0:
+        sesion.ultimo_ear_filtrado = raw_ear
+    else:
+        sesion.ultimo_ear_filtrado = alpha * raw_ear + (1.0 - alpha) * sesion.ultimo_ear_filtrado
+
+    if sesion.ultimo_mar_filtrado == 0.0:
+        sesion.ultimo_mar_filtrado = raw_mar
+    else:
+        sesion.ultimo_mar_filtrado = alpha * raw_mar + (1.0 - alpha) * sesion.ultimo_mar_filtrado
+
     if lectura.rostro_detectado:
         umbral_ear = sesion.base_ear * 0.55 if sesion.base_ear > 0 else UMBRAL_EAR_CERRADO
         umbral_mar = sesion.base_mar * 2.20 if sesion.base_mar > 0 else UMBRAL_MAR_BOSTEZO
 
-        if lectura.ear <= umbral_ear:
+        if sesion.ultimo_ear_filtrado <= umbral_ear:
             sesion.registrar_ojos_cerrados()
         else:
             sesion.registrar_ojos_abiertos()
 
-        if lectura.mar >= umbral_mar:
+        if sesion.ultimo_mar_filtrado >= umbral_mar:
             sesion.iniciar_bostezo()
         else:
             sesion.finalizar_bostezo()
 
-    angulo_cuello, angulo_lateral = calcular_postura(lectura, sesion)
-    
+    angulo_cuello_raw, angulo_lateral_raw = calcular_postura(lectura, sesion)
+
+    if sesion.ultimo_cuello_filtrado == 0.0:
+        sesion.ultimo_cuello_filtrado = angulo_cuello_raw
+    else:
+        sesion.ultimo_cuello_filtrado = alpha * angulo_cuello_raw + (1.0 - alpha) * sesion.ultimo_cuello_filtrado
+
+    if sesion.ultimo_lateral_filtrado == 0.0:
+        sesion.ultimo_lateral_filtrado = angulo_lateral_raw
+    else:
+        sesion.ultimo_lateral_filtrado = alpha * angulo_lateral_raw + (1.0 - alpha) * sesion.ultimo_lateral_filtrado
+
+    angulo_cuello = sesion.ultimo_cuello_filtrado
+    angulo_lateral = sesion.ultimo_lateral_filtrado
+
     if angulo_cuello >= 35.0:
         sesion.registrar_cabeceo_iniciado()
     else:
@@ -96,8 +123,8 @@ def analizar_lectura_hibrida(lectura: LecturaHibrida, sesion: SesionTrabajador) 
         estado = EstadoAlerta.ADVERTENCIA_SUEÑO
 
     return EstadoFisico(
-        ear=lectura.ear,
-        mar=lectura.mar,
+        ear=sesion.ultimo_ear_filtrado,
+        mar=sesion.ultimo_mar_filtrado,
         angulo_cuello=angulo_cuello,
         angulo_lateral=angulo_lateral,
         estado=estado
