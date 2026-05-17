@@ -338,26 +338,21 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
             color_alerta = PALETA["estado_critico"]
             titulo_ejercicio = "Rutina: Estiramiento de Cuello y Hombros"
             pasos = [
-                "1. Rotación de Hombros: Gira los hombros hacia atrás 5 veces lentamente.",
-                "2. Alineación Cervical: Lleva tu cabeza con la barbilla hacia atrás erguida.",
-                "3. Inclinación Lateral: Inclina la oreja derecha al hombro, luego la izquierda.",
-                "4. Estiramiento Lumbar: Apoya bien la espalda y estira los brazos al frente."
+                ("1. Rotación de Hombros", "Gira los hombros hacia atrás lentamente para liberar tensión.", "Iniciemos la pausa. Paso uno: Gira los hombros hacia atrás lentamente."),
+                ("2. Alineación Cervical", "Lleva tu cabeza con la barbilla hacia atrás manteniéndola erguida.", "Paso dos: Alineación cervical. Lleva la barbilla hacia atrás, manteniendo la mirada al frente."),
+                ("3. Inclinación Lateral", "Lleva la oreja derecha al hombro derecho, luego la izquierda.", "Paso tres: Inclinación lateral. Lleva la oreja hacia el hombro derecho y luego hacia el izquierdo."),
+                ("4. Estiramiento Lumbar", "Apoya bien la espalda y estira ambos brazos hacia el frente.", "Paso cuatro: Estiramiento lumbar. Estira los brazos al frente y entrelaza tus dedos.")
             ]
-            mensaje_voz = "Atención. Se detectó mala postura sostenida. Iniciemos una pausa de estiramiento para tus hombros y cuello."
         else:
             tipo_alerta = "ALERTA DE FATIGA Y SUEÑO"
             color_alerta = PALETA["estado_critico"]
             titulo_ejercicio = "Rutina: Relajación Ocular y Enfoque"
             pasos = [
-                "1. Regla 20-20-20: Mira un objeto a 6 metros por 20 segundos.",
-                "2. Parpadeo Consciente: Parpadea suavemente 10 veces seguidas.",
-                "3. Oxigenación: Inhala profundo durante 4 segundos y exhala despacio.",
-                "4. Estiramiento Cervical: Gira la cabeza en círculos suaves hacia los lados."
+                ("1. Regla 20-20-20", "Mira un objeto lejano a 6 metros de distancia durante 5 segundos.", "Iniciemos la pausa visual. Paso uno: Enfoca un punto lejano a seis metros."),
+                ("2. Parpadeo Consciente", "Parpadea suave y profundamente 10 veces para lubricar los ojos.", "Paso dos: Parpadeo consciente. Parpadea suavemente para rehumectar tus ojos."),
+                ("3. Respiración Profunda", "Inhala profundo por la nariz y exhala el aire despacio.", "Paso tres: Oxigenación. Inhala profundo por la nariz y exhala despacio."),
+                ("4. Estiramiento Cervical", "Gira la cabeza realizando círculos suaves hacia cada lado.", "Paso cuatro: Estiramiento cervical. Gira suavemente la cabeza en círculos.")
             ]
-            mensaje_voz = "Atención. Se detectaron signos de fatiga. Por favor realiza una pausa de relajación visual. Cierra tus ojos y parpadea."
-
-        if self._voz_habilitada:
-            _hablar(mensaje_voz)
 
         header = ctk.CTkFrame(self._alerta_win, fg_color=PALETA["fondo_panel"], corner_radius=12)
         header.pack(fill="x", padx=20, pady=(20, 10))
@@ -379,24 +374,44 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
         ex_panel = ctk.CTkFrame(self._alerta_win, fg_color=PALETA["fondo_card"], corner_radius=12, border_width=1, border_color=PALETA["borde_card"])
         ex_panel.pack(fill="both", expand=True, padx=20, pady=10)
         
-        ctk.CTkLabel(
+        lbl_titulo_rutina = ctk.CTkLabel(
             ex_panel, 
             text=titulo_ejercicio, 
-            font=ctk.CTkFont(size=13, weight="bold"), 
+            font=ctk.CTkFont(size=12, weight="bold"), 
             text_color=PALETA["acento_primario"]
-        ).pack(anchor="w", padx=15, pady=(12, 6))
-        
-        for paso in pasos:
-            ctk.CTkLabel(
-                ex_panel, 
-                text=paso, 
-                font=ctk.CTkFont(size=11), 
-                text_color=PALETA["texto_primario"],
-                justify="left",
-                anchor="w"
-            ).pack(anchor="w", padx=20, pady=2)
+        )
+        lbl_titulo_rutina.pack(anchor="w", padx=20, pady=(12, 2))
+
+        lbl_paso_num = ctk.CTkLabel(
+            ex_panel, 
+            text="", 
+            font=ctk.CTkFont(family="Consolas", size=10), 
+            text_color=PALETA["texto_secundario"]
+        )
+        lbl_paso_num.pack(anchor="w", padx=20, pady=2)
+
+        lbl_paso_titulo = ctk.CTkLabel(
+            ex_panel, 
+            text="", 
+            font=ctk.CTkFont(size=14, weight="bold"), 
+            text_color=PALETA["texto_primario"]
+        )
+        lbl_paso_titulo.pack(anchor="w", padx=20, pady=(4, 2))
+
+        lbl_paso_desc = ctk.CTkLabel(
+            ex_panel, 
+            text="", 
+            font=ctk.CTkFont(size=11), 
+            text_color=PALETA["texto_tenue"],
+            justify="left",
+            wraplength=380,
+            anchor="w"
+        )
+        lbl_paso_desc.pack(anchor="w", padx=20, pady=(2, 12))
 
         self._segundos_restantes = 20
+        self._ultimo_indice_hablado = -1
+
         progress = ctk.CTkProgressBar(self._alerta_win, width=410, progress_color=PALETA["acento_primario"], fg_color=PALETA["fondo_panel"])
         progress.pack(pady=(15, 2))
         progress.set(1.0)
@@ -437,8 +452,26 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
         def actualizar_timer():
             if not self._alerta_win or not self._alerta_win.winfo_exists():
                 return
+            
+            indice_paso = (20 - self._segundos_restantes) // 5
+            indice_paso = min(max(0, indice_paso), 3)
+
+            nombre, desc, voz_instruccion = pasos[indice_paso]
+
+            try:
+                lbl_paso_num.configure(text=f"Paso {indice_paso + 1} de 4")
+                lbl_paso_titulo.configure(text=nombre)
+                lbl_paso_desc.configure(text=desc)
+            except:
+                pass
+
+            if self._voz_habilitada and (indice_paso != self._ultimo_indice_hablado):
+                self._ultimo_indice_hablado = indice_paso
+                _hablar(voz_instruccion)
+
             self._segundos_restantes -= 1
-            if self._segundos_restantes > 0:
+
+            if self._segundos_restantes >= 0:
                 try:
                     label_timer.configure(text=f"Tiempo recomendado: {self._segundos_restantes}s")
                     progress.set(self._segundos_restantes / 20.0)
@@ -462,7 +495,7 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
                 if self._voz_habilitada:
                     _hablar("Pausa completada. Excelente trabajo. Puedes continuar con tus actividades.")
                 
-        self._alerta_win.after(1000, actualizar_timer)
+        self._alerta_win.after(10, actualizar_timer)
 
     def _cerrar_pausa_activa(self) -> None:
         if self._alerta_win:
