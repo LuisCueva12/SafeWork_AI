@@ -24,3 +24,6 @@ historial.json
 # Archivos temporales o de SO
 .DS_Store
 Thumbs.db
+
+# Inno Setup output folder
+Output/

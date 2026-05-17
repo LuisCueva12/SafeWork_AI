@@ -7,7 +7,7 @@ class GitHubUpdateAdapter:
     def __init__(self, version_actual: str = "1.0.0") -> None:
         self.version_actual = version_actual
         self.url_version = "https://raw.githubusercontent.com/LuisCueva12/SafeWork_AI/main/version.txt"
-        self.url_instalador = "https://github.com/LuisCueva12/SafeWork_AI/releases/latest/download/Instalador_SafeWork_AI.exe"
+        self.url_instalador = "https://github.com/LuisCueva12/SafeWork_AI/releases/latest/download/SafeWork_AI.exe"
 
     def verificar_actualizacion(self) -> bool:
         try:
