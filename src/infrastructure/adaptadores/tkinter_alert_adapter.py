@@ -133,7 +133,7 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
         f = ctk.CTkFrame(self._scroll, fg_color=PALETA["fondo_panel"], corner_radius=12)
         f.pack(fill="x", pady=(0, 4))
         ctk.CTkLabel(f, text="⬡  SAFEWORK AI", font=ctk.CTkFont(family="Consolas", size=18, weight="bold"), text_color=PALETA["acento_primario"]).pack(anchor="w", padx=20, pady=(14, 2))
-        ctk.CTkLabel(f, text="Softech Perú  ·  Híbrido (Sueño y Postura)", font=ctk.CTkFont(size=11), text_color=PALETA["texto_secundario"]).pack(anchor="w", padx=20, pady=(0, 6))
+        ctk.CTkLabel(f, text="Softech Perú  ·  v1.0.0  ·  Híbrido", font=ctk.CTkFont(size=11), text_color=PALETA["texto_secundario"]).pack(anchor="w", padx=20, pady=(0, 6))
         
         def toggle_voz():
             self._voz_habilitada = bool(self._switch_voz.get())
@@ -234,7 +234,7 @@ class TkinterAlertAdapter(PuertoEmisionAlertas):
     def _construir_footer(self) -> None:
         f = ctk.CTkFrame(self._scroll, fg_color="transparent")
         f.pack(fill="x", pady=(4, 16))
-        ctk.CTkLabel(f, text="Softech Perú · SafeWork AI v2.0 · Híbrido", font=ctk.CTkFont(size=9), text_color=PALETA["texto_tenue"]).pack()
+        ctk.CTkLabel(f, text="Softech Perú · SafeWork AI v1.0.0 · Híbrido", font=ctk.CTkFont(size=9), text_color=PALETA["texto_tenue"]).pack()
 
     def _loop(self) -> None:
         if not self._ventana: return

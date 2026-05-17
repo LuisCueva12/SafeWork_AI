@@ -71,7 +71,7 @@ def construir_ejecutable() -> None:
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("  SAFEWORK AI v2.0 — Softech Perú — Build Script")
+    print("  SAFEWORK AI v1.0.0 — Softech Perú — Build Script")
     print("=" * 60)
     limpiar_builds_anteriores()
     construir_ejecutable()
