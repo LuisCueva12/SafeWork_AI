@@ -45,3 +45,42 @@ class PerfilBiometricoService:
         sesion.base_ear = (sesion.base_ear * n + lectura.ear) / (n + 1)
         sesion.base_mar = (sesion.base_mar * n + lectura.mar) / (n + 1)
         sesion.muestras_calibracion += 1
+
+    def actualizar_perfil_operativo(
+        self,
+        lectura: LecturaHibrida,
+        sesion: SesionTrabajador,
+        proximidad_monitor: float,
+        angulo_cuello: float,
+        angulo_lateral: float,
+    ) -> None:
+        if not (lectura.rostro_detectado and lectura.cuerpo_detectado):
+            return
+        if lectura.mirando_abajo or lectura.mano_sobre_rostro:
+            return
+        if proximidad_monitor >= 0.35 or angulo_cuello >= 12.0 or angulo_lateral >= 6.0:
+            return
+        if lectura.ear <= 0 or lectura.mar <= 0:
+            return
+
+        ancho_hombros, ratio_y = calcular_ratio_postural(lectura)
+        if ancho_hombros <= 0:
+            return
+
+        z_hombro_medio = (lectura.hombro_izquierdo.z + lectura.hombro_derecho.z) / 2.0
+        z_nariz_rel = lectura.nariz.z - z_hombro_medio
+        tasa = 0.015
+
+        sesion.base_ancho_hombros = self._mezclar_base(sesion.base_ancho_hombros, ancho_hombros, tasa)
+        sesion.base_ratio_y = self._mezclar_base(sesion.base_ratio_y, ratio_y, tasa)
+        sesion.base_z_nariz_rel = self._mezclar_base(sesion.base_z_nariz_rel, z_nariz_rel, tasa)
+        sesion.base_ancho_cara = self._mezclar_base(sesion.base_ancho_cara, lectura.ancho_cara, tasa)
+        sesion.base_ear = self._mezclar_base(sesion.base_ear, lectura.ear, tasa)
+        sesion.base_mar = self._mezclar_base(sesion.base_mar, lectura.mar, tasa)
+        sesion.muestras_aprendizaje += 1
+
+    @staticmethod
+    def _mezclar_base(actual: float, nuevo: float, tasa: float) -> float:
+        if actual == 0.0:
+            return nuevo
+        return actual * (1.0 - tasa) + nuevo * tasa

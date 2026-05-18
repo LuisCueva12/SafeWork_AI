@@ -10,6 +10,7 @@ class MemoriaFalsa:
     def __init__(self) -> None:
         self.base = {}
         self.eventos = []
+        self.reportes = []
 
     def cargar_sesion_base(self) -> dict[str, float]:
         return self.base
@@ -23,6 +24,12 @@ class MemoriaFalsa:
 
     def registrar_evento(self, evento: dict[str, object]) -> None:
         self.eventos.append(evento)
+
+    def obtener_resumen_incidencias(self) -> dict[str, object]:
+        return {}
+
+    def guardar_reporte_sesion(self, reporte: dict[str, object]) -> None:
+        self.reportes.append(reporte)
 
 
 def construir_lectura(ear: float = 0.3, mar: float = 0.2, yolo_clase: str = "normal") -> LecturaHibrida:
@@ -121,13 +128,15 @@ class MonitorSafeWorkServiceTest(unittest.TestCase):
 
         resultado = None
         mensaje_alerta = ""
+        estados = []
         for _ in range(4):
             resultado = servicio.procesar_lectura(construir_lectura_cercana())
+            estados.append(resultado.estado_fisico.estado)
             if resultado.mensaje_alerta:
                 mensaje_alerta = resultado.mensaje_alerta
 
         self.assertIsNotNone(resultado)
-        self.assertEqual(resultado.estado_fisico.estado, EstadoAlerta.CERCANIA_MONITOR)
+        self.assertIn(EstadoAlerta.CERCANIA_MONITOR, estados)
         self.assertGreaterEqual(resultado.estado_fisico.proximidad_monitor, 0.72)
         self.assertIn("Alejate un poco", mensaje_alerta)
 
@@ -154,6 +163,47 @@ class MonitorSafeWorkServiceTest(unittest.TestCase):
         self.assertIsNotNone(resultado)
         self.assertNotEqual(resultado.estado_fisico.estado, EstadoAlerta.CABECEO)
         self.assertLess(resultado.estado_fisico.angulo_cuello, 18.0)
+
+    def test_aprende_perfil_en_lecturas_estables(self) -> None:
+        memoria = MemoriaFalsa()
+        memoria.base = {
+            "base_ear": 0.30,
+            "base_mar": 0.20,
+            "base_ancho_cara": 0.30,
+            "base_ratio_y": 1.50,
+            "base_z_nariz_rel": -0.10,
+        }
+        servicio = MonitorSafeWorkService(
+            calibracion_segundos=0.0,
+            min_muestras_calibracion=0,
+            max_duracion_calibracion_segundos=0.0,
+            memoria_usuario=memoria,
+        )
+
+        for _ in range(12):
+            servicio.procesar_lectura(construir_lectura(ear=0.34, mar=0.18, yolo_clase="normal"))
+
+        self.assertGreater(servicio.sesion.muestras_aprendizaje, 0)
+        self.assertNotEqual(servicio.sesion.base_ear, 0.30)
+
+    def test_evento_guarda_validacion_y_reporte(self) -> None:
+        memoria = MemoriaFalsa()
+        servicio = MonitorSafeWorkService(
+            calibracion_segundos=0.0,
+            min_muestras_calibracion=0,
+            max_duracion_calibracion_segundos=0.0,
+            memoria_usuario=memoria,
+        )
+
+        lectura = construir_lectura(yolo_clase="yawn")
+        resultado = servicio.procesar_lectura(lectura)
+        if resultado.estado_fisico.estado != EstadoAlerta.ADVERTENCIA_SUENO:
+            resultado = servicio.procesar_lectura(lectura)
+
+        self.assertTrue(memoria.eventos)
+        self.assertIn("validacion", memoria.eventos[-1])
+        self.assertTrue(memoria.reportes)
+        self.assertIn("perfil_base", memoria.reportes[-1])
 
 
 if __name__ == "__main__":

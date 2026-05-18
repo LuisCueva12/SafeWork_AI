@@ -232,28 +232,48 @@ def analizar_lectura_hibrida(lectura: LecturaHibrida, sesion: SesionTrabajador) 
     )
 
     if angulo_cuello >= 28.0 and evidencia_somnolencia and not oclusion_consciente:
+        sesion.racha_cabeceo_riesgo += 1
         sesion.registrar_cabeceo_iniciado()
     else:
+        sesion.racha_cabeceo_riesgo = max(0, sesion.racha_cabeceo_riesgo - 1)
         sesion.registrar_cabeza_erguida()
         
     mala_postura = (14.0 <= angulo_cuello < 28.0) or angulo_lateral >= UMBRAL_INCLINACION_LATERAL
     if mala_postura:
+        sesion.racha_postura_riesgo += 1
         sesion.registrar_mala_postura()
     else:
+        sesion.racha_postura_riesgo = max(0, sesion.racha_postura_riesgo - 1)
         sesion.registrar_buena_postura()
-        
-    estado = EstadoAlerta.OPTIMO
-    if sesion.segundos_ojos_cerrados() >= UMBRAL_OJOS_CERRADOS_SEGUNDOS or sesion.indice_fatiga >= 1.65 or sesion.racha_yolo_sueno >= 3:
-        estado = EstadoAlerta.FATIGA_EXTREMA
-    elif sesion.segundos_cabeceo() >= 2.5:
-        estado = EstadoAlerta.CABECEO
-    elif (
+
+    riesgo_cercania = (
         proximidad_monitor >= UMBRAL_CERCANIA_MONITOR
         and angulo_cuello < 18.0
         and angulo_lateral < UMBRAL_INCLINACION_LATERAL
+        and not oclusion_consciente
+    )
+    if riesgo_cercania:
+        sesion.racha_cercania_monitor += 1
+    else:
+        sesion.racha_cercania_monitor = max(0, sesion.racha_cercania_monitor - 1)
+
+    if not riesgo_cercania and not mala_postura and not evidencia_somnolencia:
+        sesion.racha_estable = min(240, sesion.racha_estable + 1)
+    else:
+        sesion.racha_estable = max(0, sesion.racha_estable - 2)
+        
+    estado = EstadoAlerta.OPTIMO
+    if (
+        sesion.segundos_ojos_cerrados() >= UMBRAL_OJOS_CERRADOS_SEGUNDOS
+        or sesion.indice_fatiga >= 1.65
+        or sesion.racha_yolo_sueno >= 3
     ):
+        estado = EstadoAlerta.FATIGA_EXTREMA
+    elif sesion.segundos_cabeceo() >= 2.5 or sesion.racha_cabeceo_riesgo >= 4:
+        estado = EstadoAlerta.CABECEO
+    elif sesion.racha_cercania_monitor >= 3:
         estado = EstadoAlerta.CERCANIA_MONITOR
-    elif sesion.segundos_mala_postura() >= UMBRAL_POSTURA_SOSTENIDA_SEGUNDOS:
+    elif sesion.segundos_mala_postura() >= UMBRAL_POSTURA_SOSTENIDA_SEGUNDOS or sesion.racha_postura_riesgo >= 4:
         estado = EstadoAlerta.MALA_POSTURA
     elif sesion.cantidad_bostezos_recientes() >= MAX_BOSTEZOS_PERMITIDOS or sesion.indice_fatiga >= 0.85:
         estado = EstadoAlerta.ADVERTENCIA_SUENO

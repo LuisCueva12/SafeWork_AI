@@ -29,6 +29,7 @@ class MonitorSafeWorkService:
     ) -> None:
         self._sesion = SesionTrabajador()
         self._memoria_usuario = memoria_usuario
+        self._ultimo_estado_confirmado = EstadoAlerta.CALIBRANDO
         self._perfilador = PerfilBiometricoService(
             calibracion_segundos,
             min_muestras=min_muestras_calibracion,
@@ -64,6 +65,19 @@ class MonitorSafeWorkService:
 
         self._sesion.registrar_deteccion()
         estado = analizar_lectura_hibrida(lectura, self._sesion)
+        self._ultimo_estado_confirmado = estado.estado
+
+        if estado.estado == EstadoAlerta.OPTIMO and self._sesion.racha_estable >= 6:
+            self._perfilador.actualizar_perfil_operativo(
+                lectura,
+                self._sesion,
+                estado.proximidad_monitor,
+                estado.angulo_cuello,
+                estado.angulo_lateral,
+            )
+            if self._sesion.muestras_aprendizaje and self._sesion.muestras_aprendizaje % 12 == 0:
+                self._guardar_perfil_base()
+
         mensaje_alerta = None
         if estado.requiere_bloqueo() and not self._sesion.en_cooldown():
             self._sesion.incrementar_contador_alertas()
@@ -71,6 +85,10 @@ class MonitorSafeWorkService:
             mensaje_alerta = self._construir_mensaje_alerta(estado.estado)
             self._registrar_evento(estado, lectura)
             self._guardar_perfil_base()
+            self._guardar_reporte_sesion()
+
+        if self._sesion.total_lecturas_validas and self._sesion.total_lecturas_validas % 45 == 0:
+            self._guardar_reporte_sesion()
 
         mensaje_estado = estado.estado.value
         if self._sesion.en_cooldown() and estado.estado != EstadoAlerta.AUSENTE:
@@ -106,16 +124,31 @@ class MonitorSafeWorkService:
                 setattr(self._sesion, campo, float(valor))
 
     def _guardar_perfil_base(self) -> None:
-        if self._memoria_usuario is None or self._sesion.muestras_calibracion <= 0:
+        if self._memoria_usuario is None:
+            return
+        if self._sesion.muestras_calibracion <= 0 and self._sesion.muestras_aprendizaje <= 0:
             return
         self._memoria_usuario.guardar_sesion_base(self._sesion)
+
+    def _guardar_reporte_sesion(self) -> None:
+        if self._memoria_usuario is None:
+            return
+        self._memoria_usuario.guardar_reporte_sesion(self._construir_reporte_sesion())
 
     def _registrar_evento(self, estado: EstadoFisico, lectura: LecturaHibrida) -> None:
         if self._memoria_usuario is None:
             return
+        categoria = self._clasificar_categoria(estado.estado)
+        severidad = self._clasificar_severidad(estado.estado)
+        validacion = self._clasificar_validacion(estado.estado)
         evento = {
             "timestamp": datetime.now().isoformat(),
+            "incident_id": f"{estado.estado.name.lower()}-{int(datetime.now().timestamp() * 1000)}",
             "estado": estado.estado.value,
+            "categoria": categoria,
+            "severidad": severidad,
+            "validacion": validacion,
+            "descripcion": self._construir_detalle_estado(estado.estado),
             "ear": round(estado.ear, 4),
             "mar": round(estado.mar, 4),
             "angulo_cuello": round(estado.angulo_cuello, 2),
@@ -128,6 +161,66 @@ class MonitorSafeWorkService:
             "indice_fatiga": round(self._sesion.indice_fatiga, 3),
         }
         self._memoria_usuario.registrar_evento(evento)
+
+    def _construir_reporte_sesion(self) -> dict[str, object]:
+        return {
+            "updated_at": datetime.now().isoformat(),
+            "estado_actual": self._ultimo_estado_confirmado.value,
+            "duracion_sesion_segundos": round(self._sesion.duracion_sesion().total_seconds(), 1),
+            "lecturas_validas": self._sesion.total_lecturas_validas,
+            "alertas_emitidas": self._sesion.total_alertas_emitidas,
+            "muestras_calibracion": self._sesion.muestras_calibracion,
+            "muestras_aprendizaje": self._sesion.muestras_aprendizaje,
+            "indice_fatiga_actual": round(self._sesion.indice_fatiga, 3),
+            "perfil_base": {
+                "ear": round(self._sesion.base_ear, 4),
+                "mar": round(self._sesion.base_mar, 4),
+                "ancho_cara": round(self._sesion.base_ancho_cara, 4),
+                "ratio_postural": round(self._sesion.base_ratio_y, 4),
+                "z_nariz_rel": round(self._sesion.base_z_nariz_rel, 4),
+            },
+            "rachas_actuales": {
+                "estable": self._sesion.racha_estable,
+                "cercania_monitor": self._sesion.racha_cercania_monitor,
+                "postura_riesgo": self._sesion.racha_postura_riesgo,
+                "cabeceo_riesgo": self._sesion.racha_cabeceo_riesgo,
+                "sueno_yolo": self._sesion.racha_yolo_sueno,
+                "bostezo_yolo": self._sesion.racha_yolo_bostezo,
+            },
+        }
+
+    @staticmethod
+    def _clasificar_categoria(estado: EstadoAlerta) -> str:
+        categorias = {
+            EstadoAlerta.FATIGA_EXTREMA: "somnolencia",
+            EstadoAlerta.ADVERTENCIA_SUENO: "fatiga",
+            EstadoAlerta.CABECEO: "somnolencia",
+            EstadoAlerta.CERCANIA_MONITOR: "proximidad",
+            EstadoAlerta.MALA_POSTURA: "ergonomia",
+        }
+        return categorias.get(estado, "general")
+
+    @staticmethod
+    def _clasificar_severidad(estado: EstadoAlerta) -> str:
+        severidades = {
+            EstadoAlerta.FATIGA_EXTREMA: "critica",
+            EstadoAlerta.CABECEO: "alta",
+            EstadoAlerta.CERCANIA_MONITOR: "media",
+            EstadoAlerta.MALA_POSTURA: "media",
+            EstadoAlerta.ADVERTENCIA_SUENO: "preventiva",
+        }
+        return severidades.get(estado, "informativa")
+
+    @staticmethod
+    def _clasificar_validacion(estado: EstadoAlerta) -> str:
+        validaciones = {
+            EstadoAlerta.FATIGA_EXTREMA: "critica_confirmada",
+            EstadoAlerta.CABECEO: "confirmada_por_patron",
+            EstadoAlerta.CERCANIA_MONITOR: "confirmada_por_repeticion",
+            EstadoAlerta.MALA_POSTURA: "confirmada_por_sostenimiento",
+            EstadoAlerta.ADVERTENCIA_SUENO: "preventiva_validada",
+        }
+        return validaciones.get(estado, "informativa")
 
     @staticmethod
     def _construir_mensaje_alerta(estado: EstadoAlerta) -> str:

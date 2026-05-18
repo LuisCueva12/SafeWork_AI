@@ -18,6 +18,8 @@ class SafeWorkSettings:
     yolo_config_dir: Path
     profile_path: Path
     events_path: Path
+    incidents_summary_path: Path
+    session_report_path: Path
     yolo_model_path: Path
     face_model_path: Path
     pose_model_path: Path
@@ -46,6 +48,8 @@ class SafeWorkSettings:
             yolo_config_dir=yolo_config_dir,
             profile_path=app_data_dir / "user_profile.json",
             events_path=app_data_dir / "event_history.json",
+            incidents_summary_path=app_data_dir / "incident_summary.json",
+            session_report_path=app_data_dir / "session_report.json",
             yolo_model_path=assets_dir / "yolov8n-drowsiness.onnx",
             face_model_path=assets_dir / "face_landmarker.task",
             pose_model_path=assets_dir / "pose_landmarker_lite.task",

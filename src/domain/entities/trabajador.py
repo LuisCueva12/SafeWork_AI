@@ -35,6 +35,7 @@ class SesionTrabajador:
     base_ear: float = 0.0
     base_mar: float = 0.0
     muestras_calibracion: int = 0
+    muestras_aprendizaje: int = 0
     
     ultimo_ear_filtrado: float = 0.0
     ultimo_mar_filtrado: float = 0.0
@@ -43,8 +44,13 @@ class SesionTrabajador:
     
     historial_mar: list[float] = field(default_factory=list)
     total_alertas_emitidas: int = 0
+    total_lecturas_validas: int = 0
     racha_yolo_sueno: int = 0
     racha_yolo_bostezo: int = 0
+    racha_estable: int = 0
+    racha_cercania_monitor: int = 0
+    racha_postura_riesgo: int = 0
+    racha_cabeceo_riesgo: int = 0
     indice_fatiga: float = 0.0
  
     def en_cooldown(self) -> bool:
@@ -62,6 +68,7 @@ class SesionTrabajador:
 
     def registrar_deteccion(self) -> None:
         self.ultima_deteccion_exitosa = datetime.now()
+        self.total_lecturas_validas += 1
   
     def segundos_sin_deteccion(self) -> float:
         return (datetime.now() - self.ultima_deteccion_exitosa).total_seconds()
@@ -139,6 +146,10 @@ class SesionTrabajador:
         self.bostezo_actual_activo = False
         self.racha_yolo_sueno = 0
         self.racha_yolo_bostezo = 0
+        self.racha_estable = 0
+        self.racha_cercania_monitor = 0
+        self.racha_postura_riesgo = 0
+        self.racha_cabeceo_riesgo = 0
         self.indice_fatiga = 0.0
   
     def duracion_sesion(self) -> timedelta:

@@ -18,6 +18,7 @@ class MotorVisionIA(QThread):
     senal_estado_sistema = pyqtSignal(str)
     senal_detalle_estado = pyqtSignal(str)
     senal_metricas = pyqtSignal(str)
+    senal_resumen_incidencias = pyqtSignal(object)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -26,6 +27,8 @@ class MotorVisionIA(QThread):
         self._memoria_usuario = MemoriaUsuarioJsonAdapter(
             self._settings.profile_path,
             self._settings.events_path,
+            self._settings.incidents_summary_path,
+            self._settings.session_report_path,
         )
         self._monitor = MonitorSafeWorkService(
             self._settings.calibration_seconds,
@@ -40,6 +43,7 @@ class MotorVisionIA(QThread):
     def run(self) -> None:
         self._captura.iniciar_captura()
         try:
+            self._emitir_resumen_incidencias()
             while self._corriendo:
                 lectura = self._captura.capturar_lectura()
                 frame = self._captura.obtener_ultimo_frame()
@@ -47,6 +51,7 @@ class MotorVisionIA(QThread):
 
                 if resultado.mensaje_alerta:
                     self.senal_alerta_emitida.emit(resultado.mensaje_alerta)
+                    self._emitir_resumen_incidencias()
 
                 self.senal_estado_sistema.emit(resultado.mensaje_estado)
                 self.senal_detalle_estado.emit(resultado.detalle_estado)
@@ -59,6 +64,13 @@ class MotorVisionIA(QThread):
                 self.msleep(self._settings.frame_interval_ms)
         finally:
             self._captura.detener_captura()
+
+    def _emitir_resumen_incidencias(self) -> None:
+        try:
+            resumen = self._memoria_usuario.obtener_resumen_incidencias()
+        except Exception:
+            resumen = {}
+        self.senal_resumen_incidencias.emit(resumen)
 
     def _emitir_frame(self, frame_bgr: np.ndarray) -> None:
         frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
