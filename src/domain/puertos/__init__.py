@@ -1,0 +1,3 @@
+from .puerto_captura_corporal import PuertoCapturaCorporal
+from .puerto_memoria_usuario import PuertoMemoriaUsuario
+from .puerto_motor_voz import PuertoMotorVoz

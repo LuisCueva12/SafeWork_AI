@@ -1,6 +1,9 @@
-mediapipe==0.10.35
-customtkinter
+PyQt6
+qdarktheme
+ultralytics
 opencv-python
-pillow
+mediapipe==0.10.35
+numpy
 pyttsx3
-pystray
+requests
+onnxruntime

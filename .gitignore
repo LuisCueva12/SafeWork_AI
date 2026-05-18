@@ -27,3 +27,6 @@ Thumbs.db
 
 # Inno Setup output folder
 Output/
+
+# Configuracion local de Ultralytics
+ultralytics_config/
