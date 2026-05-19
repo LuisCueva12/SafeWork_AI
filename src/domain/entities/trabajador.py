@@ -2,6 +2,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
+from .postura import EstadoAlerta, NivelRiesgo
+
 UMBRAL_OJOS_CERRADOS_SEGUNDOS = 2.0
 UMBRAL_CABECEO_SEGUNDOS = 5.0
 VENTANA_BOSTEZOS_MINUTOS = 5
@@ -26,6 +28,8 @@ class SesionTrabajador:
     
     inicio_mala_postura: datetime | None = None
     ultimo_registro_mala_postura: datetime | None = None
+    inicio_cercania_monitor: datetime | None = None
+    ultimo_registro_cercania_monitor: datetime | None = None
     ultimo_tiempo_alerta: datetime | None = None
     
     base_ancho_hombros: float = 0.0
@@ -52,11 +56,17 @@ class SesionTrabajador:
     racha_postura_riesgo: int = 0
     racha_cabeceo_riesgo: int = 0
     indice_fatiga: float = 0.0
+    niveles_riesgo_actuales: dict[str, str] = field(default_factory=dict)
+    incidentes: dict[str, list[dict[str, object]]] = field(default_factory=dict)
+    estado_estable_actual: str = EstadoAlerta.OPTIMO.name
+    ultimo_riesgo_observado: datetime | None = None
+    sensibilidad: str = "media"
+    cooldown_alerta_segundos: int = COOLDOWN_ALERTA_SEGUNDOS
  
     def en_cooldown(self) -> bool:
         if self.ultimo_tiempo_alerta is None:
             return False
-        return (datetime.now() - self.ultimo_tiempo_alerta).total_seconds() < COOLDOWN_ALERTA_SEGUNDOS
+        return (datetime.now() - self.ultimo_tiempo_alerta).total_seconds() < self.cooldown_alerta_segundos
 
     def registrar_alerta_disparada(self) -> None:
         self.ultimo_tiempo_alerta = datetime.now()
@@ -117,6 +127,21 @@ class SesionTrabajador:
     def segundos_mala_postura(self) -> float:
         if self.inicio_mala_postura is None: return 0.0
         return (datetime.now() - self.inicio_mala_postura).total_seconds()
+
+    def registrar_cercania_monitor(self) -> None:
+        now = datetime.now()
+        if self.inicio_cercania_monitor is None:
+            self.inicio_cercania_monitor = now
+        self.ultimo_registro_cercania_monitor = now
+
+    def registrar_distancia_correcta(self) -> None:
+        if self.inicio_cercania_monitor is not None:
+            if (datetime.now() - self.ultimo_registro_cercania_monitor).total_seconds() > 0.5:
+                self.inicio_cercania_monitor = None
+
+    def segundos_cercania_monitor(self) -> float:
+        if self.inicio_cercania_monitor is None: return 0.0
+        return (datetime.now() - self.inicio_cercania_monitor).total_seconds()
   
     def iniciar_bostezo(self) -> None:
         if not self.bostezo_actual_activo:
@@ -140,17 +165,63 @@ class SesionTrabajador:
         self.ultimo_registro_ojos_cerrados = None
         self.inicio_cabeceo = None
         self.ultimo_registro_cabeceo = None
-        self.inicio_mala_postura = None
-        self.ultimo_registro_mala_postura = None
         self.historial_bostezos.clear()
         self.bostezo_actual_activo = False
         self.racha_yolo_sueno = 0
         self.racha_yolo_bostezo = 0
-        self.racha_estable = 0
-        self.racha_cercania_monitor = 0
-        self.racha_postura_riesgo = 0
-        self.racha_cabeceo_riesgo = 0
         self.indice_fatiga = 0.0
   
     def duracion_sesion(self) -> timedelta:
         return datetime.now() - self.inicio_sesion
+
+    def factor_sensibilidad(self) -> float:
+        factores = {
+            "alta": 0.90,
+            "media": 1.0,
+            "baja": 1.15,
+        }
+        return factores.get(self.sensibilidad.lower(), 1.0)
+
+    def aplicar_histeresis_estado(self, estado: EstadoAlerta, salida_segundos: float = 2.0) -> tuple[EstadoAlerta, bool]:
+        now = datetime.now()
+        if estado not in {EstadoAlerta.OPTIMO, EstadoAlerta.LECTURA_INESTABLE}:
+            self.estado_estable_actual = estado.name
+            self.ultimo_riesgo_observado = now
+            return estado, False
+
+        if self.estado_estable_actual not in {EstadoAlerta.OPTIMO.name, EstadoAlerta.LECTURA_INESTABLE.name}:
+            if self.ultimo_riesgo_observado is not None:
+                if (now - self.ultimo_riesgo_observado).total_seconds() < salida_segundos:
+                    try:
+                        return EstadoAlerta[self.estado_estable_actual], True
+                    except KeyError:
+                        pass
+
+        self.estado_estable_actual = estado.name
+        return estado, False
+
+    def registrar_incidente(
+        self,
+        tipo: str,
+        nivel: NivelRiesgo | str,
+        duracion: float,
+        timestamp: datetime | None = None,
+    ) -> None:
+        nivel_nombre = nivel.name if isinstance(nivel, NivelRiesgo) else str(nivel)
+        momento = timestamp or datetime.now()
+        incidente = {
+            "tipo": tipo,
+            "nivel": nivel_nombre,
+            "duracion_segundos": round(duracion, 2),
+            "timestamp": momento.isoformat(),
+        }
+        self.incidentes.setdefault(tipo, []).append(incidente)
+
+    def actualizar_nivel_riesgo(self, tipo: str, nivel: NivelRiesgo, duracion: float) -> None:
+        previo = self.niveles_riesgo_actuales.get(tipo, NivelRiesgo.OBSERVACION.name)
+        self.niveles_riesgo_actuales[tipo] = nivel.name
+        if nivel == NivelRiesgo.RIESGO_CRITICO and previo in {
+            NivelRiesgo.RIESGO_LEVE.name,
+            NivelRiesgo.RIESGO_CONFIRMADO.name,
+        }:
+            self.registrar_incidente(tipo, nivel, duracion, datetime.now())

@@ -13,6 +13,10 @@ class SafeWorkSettings:
     capture_index: int
     frame_width: int
     frame_height: int
+    yolo_inference_stride: int
+    yolo_confidence_threshold: float
+    sensitivity: str
+    alert_cooldown_seconds: int
     assets_dir: Path
     app_data_dir: Path
     yolo_config_dir: Path
@@ -43,6 +47,10 @@ class SafeWorkSettings:
             capture_index=0,
             frame_width=640,
             frame_height=480,
+            yolo_inference_stride=5,
+            yolo_confidence_threshold=0.55,
+            sensitivity=os.getenv("SAFEWORK_SENSITIVITY", "media").strip().lower() or "media",
+            alert_cooldown_seconds=cls._leer_entero_env("SAFEWORK_ALERT_COOLDOWN_SECONDS", 45),
             assets_dir=assets_dir,
             app_data_dir=app_data_dir,
             yolo_config_dir=yolo_config_dir,
@@ -60,3 +68,10 @@ class SafeWorkSettings:
         if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
             return Path(sys._MEIPASS)
         return Path(__file__).resolve().parents[3]
+
+    @staticmethod
+    def _leer_entero_env(nombre: str, defecto: int) -> int:
+        try:
+            return int(os.getenv(nombre, str(defecto)))
+        except (TypeError, ValueError):
+            return defecto

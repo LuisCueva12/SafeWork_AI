@@ -33,6 +33,11 @@ class MemoriaUsuarioJsonAdapterTest(unittest.TestCase):
                     "categoria": "proximidad",
                     "severidad": "media",
                     "descripcion": "Se detecta una cercania excesiva al monitor.",
+                    "nivel_riesgo": "RIESGO_LEVE",
+                    "duracion_riesgo_segundos": 11.0,
+                    "calidad_deteccion": 98,
+                    "accion_recomendada": "Alejate un poco del monitor.",
+                    "evidencias": ["rostro_mas_grande"],
                 }
             )
 
@@ -41,6 +46,8 @@ class MemoriaUsuarioJsonAdapterTest(unittest.TestCase):
             self.assertEqual(resumen["por_categoria"]["ergonomia"], 1)
             self.assertEqual(resumen["por_categoria"]["proximidad"], 1)
             self.assertEqual(resumen["ultimas_incidencias"][0]["estado"], "CERCANIA AL MONITOR")
+            self.assertEqual(resumen["ultimas_incidencias"][0]["nivel_riesgo"], "RIESGO_LEVE")
+            self.assertIn("rostro_mas_grande", resumen["ultimas_incidencias"][0]["evidencias"])
 
 
 if __name__ == "__main__":

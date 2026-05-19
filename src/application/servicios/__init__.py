@@ -1,3 +1,4 @@
 from .monitor_safework_service import MonitorSafeWorkService, ResultadoMonitoreo
+from .pausa_activa_service import PausaActiva, PausaActivaService
 from .perfil_biometrico_service import PerfilBiometricoService
-
+from .reporte_export_service import ReporteExportado, ReporteExportService

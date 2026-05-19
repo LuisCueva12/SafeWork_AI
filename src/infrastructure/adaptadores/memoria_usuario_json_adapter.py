@@ -107,6 +107,11 @@ class MemoriaUsuarioJsonAdapter:
                     "categoria": evento.get("categoria", ""),
                     "severidad": evento.get("severidad", ""),
                     "descripcion": evento.get("descripcion", ""),
+                    "nivel_riesgo": evento.get("nivel_riesgo", ""),
+                    "duracion_riesgo_segundos": evento.get("duracion_riesgo_segundos", ""),
+                    "calidad_deteccion": evento.get("calidad_deteccion", ""),
+                    "accion_recomendada": evento.get("accion_recomendada", ""),
+                    "evidencias": evento.get("evidencias", []),
                 }
             )
 

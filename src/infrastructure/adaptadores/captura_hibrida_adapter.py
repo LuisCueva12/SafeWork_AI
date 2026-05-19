@@ -12,6 +12,7 @@ from mediapipe.tasks.python import vision as mp_vision
 
 from ...domain.entities.postura import Coordenada, LecturaHibrida
 from ...domain.puertos import PuertoCapturaCorporal
+from ...domain.reglas.normalizacion_yolo import normalizar_clase_yolo
 from ..config import SafeWorkSettings
 
 try:
@@ -34,6 +35,9 @@ class CapturaHibridaAdapter(PuertoCapturaCorporal):
         self._face_landmarker: mp_vision.FaceLandmarker | None = None
         self._pose_landmarker: mp_vision.PoseLandmarker | None = None
         self._modelo_yolo = None
+        self._contador_frames = 0
+        self._ultima_clase_yolo = "normal"
+        self._ultima_confianza_yolo = 0.0
         self._configurar_ultralytics()
         self._inicializar_modelos()
 
@@ -69,14 +73,18 @@ class CapturaHibridaAdapter(PuertoCapturaCorporal):
             rostro_detectado=rostro_detectado,
             cuerpo_detectado=cuerpo_detectado,
             yolo_clase="normal",
+            yolo_confianza=0.0,
         )
 
+        face_lms = None
         if rostro_detectado:
-            self._mapear_rostro(lectura, res_face.face_landmarks[0])
+            face_lms = res_face.face_landmarks[0]
+            self._mapear_rostro(lectura, face_lms)
         if cuerpo_detectado:
             pose_lms = res_pose.pose_landmarks[0]
             self._mapear_cuerpo(lectura, pose_lms)
-            lectura.yolo_clase = self._clasificar_rostro(frame_rgb, pose_lms)
+        if face_lms is not None:
+            lectura.yolo_clase, lectura.yolo_confianza = self._clasificar_rostro(frame_rgb, face_lms)
 
         return lectura
 
@@ -160,39 +168,76 @@ class CapturaHibridaAdapter(PuertoCapturaCorporal):
         lectura.hombro_derecho = point_to_coord(12)
         lectura.mano_sobre_rostro = self._mano_sobre_rostro(lectura.nariz, point_to_coord)
 
-    def _clasificar_rostro(self, frame_rgb: np.ndarray, pose_landmarks) -> str:
+    def _clasificar_rostro(self, frame_rgb: np.ndarray, face_landmarks) -> tuple[str, float]:
         if self._modelo_yolo is None:
-            return "normal"
+            return "normal", 0.0
+
+        self._contador_frames += 1
+        stride = max(1, self._settings.yolo_inference_stride)
+        if self._contador_frames % stride != 0:
+            return self._ultima_clase_yolo, self._ultima_confianza_yolo
 
         try:
-            alto, ancho = frame_rgb.shape[:2]
-            puntos_rostro = pose_landmarks[0:11]
-            x_coords = [p.x for p in puntos_rostro]
-            y_coords = [p.y for p in puntos_rostro]
-            x_min = max(0, int(min(x_coords) * ancho) - 30)
-            y_min = max(0, int(min(y_coords) * alto) - 50)
-            x_max = min(ancho, int(max(x_coords) * ancho) + 30)
-            y_max = min(alto, int(max(y_coords) * alto) + 50)
-            if x_max <= x_min or y_max <= y_min:
-                return "normal"
+            rostro = self._recortar_rostro(frame_rgb, face_landmarks)
+            if rostro is None:
+                return "normal", 0.0
 
-            rostro = frame_rgb[y_min:y_max, x_min:x_max]
             resultados = self._modelo_yolo.predict(rostro, verbose=False)
             if not resultados:
-                return "normal"
+                return "normal", 0.0
             probs = getattr(resultados[0], "probs", None)
             if probs is None:
-                return "normal"
+                return "normal", 0.0
 
             top1 = int(probs.top1)
+            confianza = float(getattr(probs, "top1conf", 0.0))
+            if confianza < self._settings.yolo_confidence_threshold:
+                self._ultima_clase_yolo = "normal"
+                self._ultima_confianza_yolo = confianza
+                return self._ultima_clase_yolo, self._ultima_confianza_yolo
+
             nombres = self._modelo_yolo.names
             if isinstance(nombres, dict):
-                return str(nombres.get(top1, "normal"))
+                self._ultima_clase_yolo = normalizar_clase_yolo(str(nombres.get(top1, "normal")))
+                self._ultima_confianza_yolo = confianza
+                return self._ultima_clase_yolo, self._ultima_confianza_yolo
             if isinstance(nombres, (list, tuple)) and 0 <= top1 < len(nombres):
-                return str(nombres[top1])
+                self._ultima_clase_yolo = normalizar_clase_yolo(str(nombres[top1]))
+                self._ultima_confianza_yolo = confianza
+                return self._ultima_clase_yolo, self._ultima_confianza_yolo
         except Exception:
-            return "normal"
-        return "normal"
+            self._ultima_clase_yolo = "normal"
+            self._ultima_confianza_yolo = 0.0
+            return self._ultima_clase_yolo, self._ultima_confianza_yolo
+        self._ultima_clase_yolo = "normal"
+        self._ultima_confianza_yolo = 0.0
+        return self._ultima_clase_yolo, self._ultima_confianza_yolo
+
+    @staticmethod
+    def _recortar_rostro(frame_rgb: np.ndarray, face_landmarks) -> np.ndarray | None:
+        alto, ancho = frame_rgb.shape[:2]
+        if not face_landmarks:
+            return None
+
+        x_coords = [p.x for p in face_landmarks]
+        y_coords = [p.y for p in face_landmarks]
+        x_min_f = max(0.0, min(x_coords))
+        y_min_f = max(0.0, min(y_coords))
+        x_max_f = min(1.0, max(x_coords))
+        y_max_f = min(1.0, max(y_coords))
+
+        rostro_ancho = max(0.01, x_max_f - x_min_f)
+        rostro_alto = max(0.01, y_max_f - y_min_f)
+        pad_x = rostro_ancho * 0.18
+        pad_y = rostro_alto * 0.22
+
+        x_min = max(0, int((x_min_f - pad_x) * ancho))
+        y_min = max(0, int((y_min_f - pad_y) * alto))
+        x_max = min(ancho, int((x_max_f + pad_x) * ancho))
+        y_max = min(alto, int((y_max_f + pad_y) * alto))
+        if x_max - x_min < 40 or y_max - y_min < 40:
+            return None
+        return frame_rgb[y_min:y_max, x_min:x_max]
 
     def _detectar_mirada_abajo(self, face_landmarks) -> bool:
         if len(face_landmarks) < 478:
@@ -238,4 +283,3 @@ class CapturaHibridaAdapter(PuertoCapturaCorporal):
         h = self._distancia(landmarks[indices[0]], landmarks[indices[4]])
         v = self._distancia(landmarks[indices[2]], landmarks[indices[6]])
         return v / h if h > 0 else 0.0
-

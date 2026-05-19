@@ -1,18 +1,21 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPixmap
+from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtGui import QDesktopServices, QPixmap
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
     QPushButton,
+    QScrollArea,
     QStatusBar,
     QVBoxLayout,
     QWidget,
 )
 
+from ...application.servicios import ReporteExportService
+from ..config import SafeWorkSettings
 from .motor_vision_hibrido_qthread import MotorVisionIA
 from .voz_qthread_adapter import VozQThreadAdapter
 
@@ -21,11 +24,22 @@ class SafeWorkApp(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("SafeWork AI")
-        self.resize(920, 600)
-        self.setMinimumSize(860, 560)
+        self.resize(1040, 680)
+        self.setMinimumSize(940, 600)
 
         self._ultimo_mensaje_voz = ""
         self._voz_habilitada = True
+        self._ultimo_estado_base = "CALIBRANDO"
+        self._nivel_riesgo_actual = "OBSERVACION"
+        self._settings = SafeWorkSettings.from_runtime()
+        self._exportador_reporte = ReporteExportService(
+            self._settings.profile_path,
+            self._settings.events_path,
+            self._settings.incidents_summary_path,
+            self._settings.session_report_path,
+        )
+
+        self._construir_ui()
 
         self._worker_voz = VozQThreadAdapter(self)
         self._worker_voz.start()
@@ -37,34 +51,30 @@ class SafeWorkApp(QMainWindow):
         self._motor.senal_detalle_estado.connect(self._actualizar_detalle_estado)
         self._motor.senal_metricas.connect(self._actualizar_metricas)
         self._motor.senal_resumen_incidencias.connect(self._actualizar_panel_incidencias)
+        self._motor.senal_nivel_riesgo.connect(self._actualizar_nivel_riesgo)
+        self._motor.senal_bloqueo_requerido.connect(self._manejar_bloqueo_critico)
         self._motor.start()
-
-        self._construir_ui()
 
     def _construir_ui(self) -> None:
         self.setStyleSheet(
             """
-            QMainWindow, QWidget {
-                background: #0f172a;
+            * {
+                font-family: 'Segoe UI', sans-serif;
+            }
+            QMainWindow {
+                background: #111827;
+            }
+            QWidget {
                 color: #e2e8f0;
+                background: transparent;
             }
             QFrame#card {
-                background: #111827;
-                border: 1px solid #1f2937;
-                border-radius: 16px;
-            }
-            QFrame#metricCard {
-                background: #0b1220;
-                border: 1px solid #1f2937;
-                border-radius: 12px;
-            }
-            QFrame#metricRow {
-                background: #0b1220;
-                border: 1px solid #1f2937;
-                border-radius: 10px;
+                background: #0f172a;
+                border: 1px solid #243044;
+                border-radius: 8px;
             }
             QLabel#title {
-                font-size: 22px;
+                font-size: 24px;
                 font-weight: 700;
                 color: #f8fafc;
             }
@@ -78,24 +88,30 @@ class SafeWorkApp(QMainWindow):
                 color: #93c5fd;
                 text-transform: uppercase;
             }
-            QLabel#metricName {
-                font-size: 11px;
-                font-weight: 600;
-                color: #93c5fd;
+            QScrollArea {
+                border: none;
+                background: transparent;
             }
-            QLabel#metricValue {
-                font-size: 12px;
-                color: #e2e8f0;
+            QScrollBar:vertical {
+                background: #111827;
+                width: 8px;
+                margin: 0;
+            }
+            QScrollBar::handle:vertical {
+                background: #334155;
+                border-radius: 4px;
             }
             QPushButton {
-                background: #172554;
-                color: #dbeafe;
-                border: 1px solid #2563eb;
-                border-radius: 10px;
+                background: #14532d;
+                color: #dcfce7;
+                font-size: 12px;
+                font-weight: 600;
+                border: 1px solid #22c55e;
+                border-radius: 8px;
                 padding: 8px 12px;
             }
             QPushButton:hover {
-                background: #1d4ed8;
+                background: #166534;
             }
             """
         )
@@ -103,7 +119,7 @@ class SafeWorkApp(QMainWindow):
         contenedor = QWidget(self)
         layout = QVBoxLayout(contenedor)
         layout.setContentsMargins(14, 14, 14, 14)
-        layout.setSpacing(10)
+        layout.setSpacing(12)
 
         header = QLabel("SAFEWORK AI")
         header.setObjectName("title")
@@ -114,7 +130,7 @@ class SafeWorkApp(QMainWindow):
         layout.addWidget(self._subtitulo)
 
         cuerpo = QHBoxLayout()
-        cuerpo.setSpacing(10)
+        cuerpo.setSpacing(12)
 
         video_card = self._crear_card()
         video_layout = QVBoxLayout(video_card)
@@ -122,24 +138,31 @@ class SafeWorkApp(QMainWindow):
 
         self._video = QLabel("Inicializando camara y modelos...")
         self._video.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._video.setMinimumSize(600, 360)
+        self._video.setMinimumSize(640, 420)
         self._video.setStyleSheet(
-            "background-color: #020617; border: 1px solid #1e293b; border-radius: 12px;"
+            "background-color: #020617; border: 1px solid #334155; border-radius: 6px;"
         )
         video_layout.addWidget(self._video, 1)
+
+        self._bloqueo_banner = QLabel("RIESGO CRITICO: realiza una pausa activa antes de continuar.")
+        self._bloqueo_banner.setWordWrap(True)
+        self._bloqueo_banner.setVisible(False)
+        self._bloqueo_banner.setStyleSheet(
+            "font-size: 14px; font-weight: 700; color: #fee2e2; background: #7f1d1d; "
+            "padding: 10px 12px; border-radius: 8px; border: 1px solid #ef4444;"
+        )
+        video_layout.addWidget(self._bloqueo_banner)
         cuerpo.addWidget(video_card, 1)
 
-        lateral = QVBoxLayout()
-        lateral.setSpacing(10)
+        lateral_content = QWidget()
+        lateral = QVBoxLayout(lateral_content)
+        lateral.setSpacing(12)
         lateral.setContentsMargins(0, 0, 0, 0)
-        lateral.setStretch(0, 0)
-        lateral.setStretch(1, 0)
-        lateral.setStretch(2, 1)
 
         estado_card = self._crear_card()
         estado_layout = QVBoxLayout(estado_card)
         estado_layout.setContentsMargins(12, 12, 12, 12)
-        estado_layout.setSpacing(8)
+        estado_layout.setSpacing(10)
 
         estado_title = QLabel("Estado actual")
         estado_title.setObjectName("sectionTitle")
@@ -148,9 +171,14 @@ class SafeWorkApp(QMainWindow):
         self._estado = QLabel("CALIBRANDO")
         self._estado.setWordWrap(True)
         self._estado.setStyleSheet(
-            "font-size: 17px; font-weight: 700; color: #38bdf8;"
+            "font-size: 18px; font-weight: 700; color: #38bdf8;"
         )
         estado_layout.addWidget(self._estado)
+
+        self._estado_aux = QLabel("Preparando monitoreo")
+        self._estado_aux.setWordWrap(True)
+        self._estado_aux.setStyleSheet("font-size: 11px; color: #94a3b8;")
+        estado_layout.addWidget(self._estado_aux)
 
         self._detalle = QLabel("Esperando perfil basal del usuario...")
         self._detalle.setWordWrap(True)
@@ -165,7 +193,7 @@ class SafeWorkApp(QMainWindow):
         metricas_card = self._crear_card()
         metricas_layout = QVBoxLayout(metricas_card)
         metricas_layout.setContentsMargins(12, 12, 12, 12)
-        metricas_layout.setSpacing(8)
+        metricas_layout.setSpacing(10)
 
         metricas_title = QLabel("Metricas")
         metricas_title.setObjectName("sectionTitle")
@@ -176,40 +204,40 @@ class SafeWorkApp(QMainWindow):
         self._metricas_resumen.setStyleSheet("font-size: 12px; color: #cbd5e1;")
         metricas_layout.addWidget(self._metricas_resumen)
 
-        self._card_ojos = self._crear_resumen_metrica("Ojos", "Sin lectura")
-        self._card_postura = self._crear_resumen_metrica("Postura", "Sin lectura")
-        self._card_distancia = self._crear_resumen_metrica("Distancia", "Sin lectura")
-        self._card_energia = self._crear_resumen_metrica("Energia", "Sin lectura")
-        metricas_layout.addWidget(self._card_ojos)
-        metricas_layout.addWidget(self._card_postura)
-        metricas_layout.addWidget(self._card_distancia)
-        metricas_layout.addWidget(self._card_energia)
+        self._linea_ojos = self._crear_linea_simple("Ojos: Sin lectura")
+        self._linea_postura = self._crear_linea_simple("Postura: Sin lectura")
+        self._linea_distancia = self._crear_linea_simple("Distancia: Sin lectura")
+        self._linea_energia = self._crear_linea_simple("Energia: Sin lectura")
+        metricas_layout.addWidget(self._linea_ojos)
+        metricas_layout.addWidget(self._linea_postura)
+        metricas_layout.addWidget(self._linea_distancia)
+        metricas_layout.addWidget(self._linea_energia)
         lateral.addWidget(metricas_card)
 
         incidencias_card = self._crear_card()
         incidencias_layout = QVBoxLayout(incidencias_card)
         incidencias_layout.setContentsMargins(12, 12, 12, 12)
-        incidencias_layout.setSpacing(8)
+        incidencias_layout.setSpacing(10)
 
         incidencias_title = QLabel("Incidencias")
         incidencias_title.setObjectName("sectionTitle")
         incidencias_layout.addWidget(incidencias_title)
 
-        self._chip_total = self._crear_chip("Total de incidencias", "--")
-        self._chip_ergonomia = self._crear_chip("Postura", "--")
-        self._chip_proximidad = self._crear_chip("Cercania a pantalla", "--")
-        self._chip_somnolencia = self._crear_chip("Fatiga o somnolencia", "--")
-        incidencias_layout.addWidget(self._chip_total)
-        incidencias_layout.addWidget(self._chip_ergonomia)
-        incidencias_layout.addWidget(self._chip_proximidad)
-        incidencias_layout.addWidget(self._chip_somnolencia)
+        self._incidencias_totales = self._crear_linea_simple("Total de incidencias: --")
+        self._incidencias_postura = self._crear_linea_simple("Incidencias por postura: --")
+        self._incidencias_pantalla = self._crear_linea_simple("Incidencias por cercania: --")
+        self._incidencias_fatiga = self._crear_linea_simple("Incidencias por fatiga: --")
+        incidencias_layout.addWidget(self._incidencias_totales)
+        incidencias_layout.addWidget(self._incidencias_postura)
+        incidencias_layout.addWidget(self._incidencias_pantalla)
+        incidencias_layout.addWidget(self._incidencias_fatiga)
 
         self._ultima_incidencia = QLabel("Aun no se registran incidencias.")
         self._ultima_incidencia.setWordWrap(True)
-        self._ultima_incidencia.setMinimumHeight(74)
+        self._ultima_incidencia.setMinimumHeight(96)
         self._ultima_incidencia.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         self._ultima_incidencia.setStyleSheet(
-            "font-size: 12px; color: #cbd5e1; background: #0b1220; "
+            "font-size: 12px; color: #e2e8f0; background: #0b1220; "
             "padding: 10px; border-radius: 10px; border: 1px solid #1f2937;"
         )
         incidencias_layout.addWidget(self._ultima_incidencia)
@@ -218,12 +246,20 @@ class SafeWorkApp(QMainWindow):
         self._log_resumen.setWordWrap(True)
         self._log_resumen.setStyleSheet("font-size: 11px; color: #94a3b8;")
         incidencias_layout.addWidget(self._log_resumen)
-        lateral.addWidget(incidencias_card, 1)
 
-        lateral_wrap = QWidget()
-        lateral_wrap.setFixedWidth(332)
-        lateral_wrap.setLayout(lateral)
-        cuerpo.addWidget(lateral_wrap, 0)
+        self._boton_exportar = QPushButton("Exportar reporte")
+        self._boton_exportar.clicked.connect(self._exportar_reporte)
+        incidencias_layout.addWidget(self._boton_exportar)
+        lateral.addWidget(incidencias_card)
+        lateral.addStretch(1)
+
+        lateral_scroll = QScrollArea()
+        lateral_scroll.setWidgetResizable(True)
+        lateral_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        lateral_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        lateral_scroll.setFixedWidth(360)
+        lateral_scroll.setWidget(lateral_content)
+        cuerpo.addWidget(lateral_scroll, 0)
         layout.addLayout(cuerpo, 1)
         self.setCentralWidget(contenedor)
 
@@ -238,36 +274,14 @@ class SafeWorkApp(QMainWindow):
         return card
 
     @staticmethod
-    def _crear_chip(titulo: str, valor: str) -> QLabel:
-        chip = QLabel(f"{titulo}: {valor}")
-        chip.setWordWrap(True)
-        chip.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        chip.setStyleSheet(
-            "font-size: 11px; font-weight: 600; color: #e2e8f0; background: #0b1220; "
-            "border: 1px solid #1f2937; border-radius: 10px; padding: 10px;"
+    def _crear_linea_simple(texto: str) -> QLabel:
+        label = QLabel(texto)
+        label.setWordWrap(True)
+        label.setStyleSheet(
+            "font-size: 12px; color: #e2e8f0; background: #0b1220; "
+            "padding: 8px 10px; border-radius: 10px; border: 1px solid #1f2937;"
         )
-        chip.setMinimumHeight(40)
-        return chip
-
-    @staticmethod
-    def _crear_resumen_metrica(titulo: str, valor: str) -> QFrame:
-        card = QFrame()
-        card.setObjectName("metricRow")
-        layout = QHBoxLayout(card)
-        layout.setContentsMargins(10, 8, 10, 8)
-        layout.setSpacing(10)
-
-        title = QLabel(titulo)
-        title.setObjectName("metricName")
-        title.setFixedWidth(72)
-        value = QLabel(valor)
-        value.setObjectName("metricValue")
-        value.setWordWrap(True)
-
-        layout.addWidget(title)
-        layout.addWidget(value, 1)
-        card._value_label = value
-        return card
+        return label
 
     def _actualizar_frame(self, imagen) -> None:
         pixmap = QPixmap.fromImage(imagen)
@@ -281,10 +295,12 @@ class SafeWorkApp(QMainWindow):
         self._video.setPixmap(escalado)
 
     def _actualizar_estado(self, estado: str) -> None:
-        self._estado.setText(estado)
+        estado_base = estado.replace(" - Cooldown activo", "")
+        self._ultimo_estado_base = estado_base
+        self._estado.setText(estado_base)
         color = "#22c55e"
 
-        estado_upper = estado.upper()
+        estado_upper = estado_base.upper()
         if "CALIBRANDO" in estado_upper:
             color = "#38bdf8"
         elif "AUSENTE" in estado_upper:
@@ -297,9 +313,10 @@ class SafeWorkApp(QMainWindow):
             color = "#ef4444"
 
         self._estado.setStyleSheet(
-            "font-size: 18px; font-weight: 700; background: #111827;"
-            f"padding: 10px 14px; border-radius: 10px; color: {color};"
+            "font-size: 16px; font-weight: 700; background: #0b1220;"
+            f"padding: 8px 12px; border-radius: 8px; color: {color};"
         )
+        self._estado_aux.setText("Pausa temporal entre alertas" if "Cooldown activo" in estado else "Monitoreo activo")
         self.statusBar().showMessage(estado)
 
     def _actualizar_detalle_estado(self, detalle: str) -> None:
@@ -310,6 +327,29 @@ class SafeWorkApp(QMainWindow):
         if metricas:
             self._aplicar_metricas_legibles(metricas)
 
+    def _actualizar_nivel_riesgo(self, nivel: str) -> None:
+        self._nivel_riesgo_actual = nivel
+        estilos = {
+            "OBSERVACION": ("#facc15", "Observacion preventiva"),
+            "RIESGO_LEVE": ("#f59e0b", "Riesgo leve"),
+            "RIESGO_CONFIRMADO": ("#f97316", "Riesgo confirmado"),
+            "RIESGO_CRITICO": ("#ef4444", "Riesgo critico"),
+        }
+        color, texto = estilos.get(nivel, ("#334155", "Monitoreo activo"))
+        self._video.setStyleSheet(
+            "background-color: #020617; "
+            f"border: 2px solid {color}; "
+            "border-radius: 6px;"
+        )
+        self._estado_aux.setText(texto)
+        if nivel != "RIESGO_CRITICO":
+            self._bloqueo_banner.setVisible(False)
+
+    def _manejar_bloqueo_critico(self, mensaje: str) -> None:
+        self._bloqueo_banner.setText(f"RIESGO CRITICO: {mensaje}")
+        self._bloqueo_banner.setVisible(True)
+        self.statusBar().showMessage(f"Riesgo critico: {mensaje}", 7000)
+
     def _actualizar_panel_incidencias(self, resumen: object) -> None:
         if not isinstance(resumen, dict):
             return
@@ -319,10 +359,10 @@ class SafeWorkApp(QMainWindow):
         if not isinstance(por_categoria, dict):
             por_categoria = {}
 
-        self._chip_total.setText(f"Total de incidencias: {total}")
-        self._chip_ergonomia.setText(f"Postura: {int(por_categoria.get('ergonomia', 0) or 0)}")
-        self._chip_proximidad.setText(f"Cercania a pantalla: {int(por_categoria.get('proximidad', 0) or 0)}")
-        self._chip_somnolencia.setText(f"Fatiga o somnolencia: {int(por_categoria.get('somnolencia', 0) or 0)}")
+        self._incidencias_totales.setText(f"Total de incidencias: {total}")
+        self._incidencias_postura.setText(f"Incidencias por postura: {int(por_categoria.get('ergonomia', 0) or 0)}")
+        self._incidencias_pantalla.setText(f"Incidencias por cercania: {int(por_categoria.get('proximidad', 0) or 0)}")
+        self._incidencias_fatiga.setText(f"Incidencias por fatiga: {int(por_categoria.get('somnolencia', 0) or 0)}")
 
         ultimas = resumen.get("ultimas_incidencias", [])
         if isinstance(ultimas, list) and ultimas:
@@ -373,10 +413,10 @@ class SafeWorkApp(QMainWindow):
             "Resumen rapido: "
             f"{ojos_texto.lower()}, {postura_texto.lower()} y {distancia_texto.lower()}."
         )
-        self._card_ojos._value_label.setText(ojos_texto)
-        self._card_postura._value_label.setText(postura_texto)
-        self._card_distancia._value_label.setText(distancia_texto)
-        self._card_energia._value_label.setText(energia_texto)
+        self._linea_ojos.setText(f"Ojos: {ojos_texto}")
+        self._linea_postura.setText(f"Postura: {postura_texto}")
+        self._linea_distancia.setText(f"Distancia: {distancia_texto}")
+        self._linea_energia.setText(f"Energia: {energia_texto}")
 
     @staticmethod
     def _parsear_metricas(metricas: str) -> dict[str, float]:
@@ -405,7 +445,20 @@ class SafeWorkApp(QMainWindow):
         self._voz_habilitada = not self._voz_habilitada
         self._boton_voz.setText("Voz: Activa" if self._voz_habilitada else "Voz: Silenciada")
 
+    def _exportar_reporte(self) -> None:
+        try:
+            self._motor.guardar_reporte_actual()
+            reporte = self._exportador_reporte.exportar()
+            self.statusBar().showMessage(f"Reporte exportado: {reporte.html_path}", 10000)
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(reporte.html_path)))
+        except Exception as exc:
+            self.statusBar().showMessage(f"No se pudo exportar el reporte: {exc}", 10000)
+
     def closeEvent(self, event) -> None: 
+        try:
+            self._motor.guardar_reporte_actual()
+        except Exception:
+            pass
         try:
             self._motor.detener()
         except Exception:
