@@ -29,52 +29,52 @@ class ReportePdfRenderer:
         contexto = sesion.get("contexto_operativo", {})
         if not isinstance(contexto, dict):
             contexto = {}
+        periodos = metricas.get("periodos", {})
+        if not isinstance(periodos, dict):
+            periodos = {}
+        recomendaciones = analisis.get("recomendaciones", [])
+        if not isinstance(recomendaciones, list):
+            recomendaciones = [recomendaciones]
 
         lineas = [
             "Reporte SafeWork AI",
             f"Exportado: {payload.get('exportado_en', '')}",
             "",
-            "Resumen ejecutivo",
-            f"Incidencias: {resumen.get('total_incidencias', 0)}",
-            f"Lecturas validas: {sesion.get('lecturas_validas', 0)}",
-            f"Alertas emitidas: {sesion.get('alertas_emitidas', 0)}",
-            f"Puntaje de datos: {analisis.get('puntaje_calidad_datos', 'N/D')}/100",
-            f"Estado del sistema: {analisis.get('estado_sistema', 'N/D')}",
-            f"Diagnostico: {analisis.get('diagnostico', 'N/D')}",
-            "",
-            "Contexto de validacion",
-            f"Empresa: {contexto.get('empresa', 'N/D')}",
-            f"Trabajador: {contexto.get('trabajador', 'N/D')}",
+            "Identificacion",
+            f"Persona analizada: {contexto.get('nombre', contexto.get('trabajador', 'N/D'))}",
+            f"Rol: {contexto.get('rol', 'N/D')}",
+            f"Tipo de usuario: {contexto.get('tipo_usuario', 'N/D')}",
             f"Puesto: {contexto.get('puesto', 'N/D')}",
+            "",
+            "Resumen principal",
+            f"Estado final: {sesion.get('estado_actual', 'N/D')}",
+            f"Incidencias: {resumen.get('total_incidencias', 0)}",
+            f"Alertas emitidas: {sesion.get('alertas_emitidas', 0)}",
+            f"Lecturas validas: {sesion.get('lecturas_validas', 0)}",
+            f"Calidad de lectura: {ReporteHtmlRenderer._formato_pct(sesion.get('calidad_ultima_lectura'))}",
+            f"Duracion: {ReporteHtmlRenderer._formato_duracion(sesion.get('duracion_sesion_segundos'))}",
+            f"Incidencias hoy: {periodos.get('hoy', 0)}",
+            f"Incidencias 7 dias: {periodos.get('ultimos_7_dias', 0)}",
+            "",
+            "Indicadores clave",
+            f"Empresa: {contexto.get('empresa', 'N/D')}",
+            f"Area: {contexto.get('area', 'N/D')}",
             f"Perfil de riesgo: {contexto.get('perfil_riesgo', 'N/D')}",
-            f"Camara: {contexto.get('camara', 'N/D')}",
-            f"Iluminacion: {contexto.get('iluminacion', 'N/D')}",
-            "",
-            "Metricas agregadas",
-            f"Periodos: {json.dumps(metricas.get('periodos', {}), ensure_ascii=False)}",
-            f"Por dia: {json.dumps(metricas.get('por_dia', {}), ensure_ascii=False)}",
-            f"Por semana: {json.dumps(metricas.get('por_semana', {}), ensure_ascii=False)}",
-            f"Por mes: {json.dumps(metricas.get('por_mes', {}), ensure_ascii=False)}",
-            "",
-            "Validacion del modelo",
-            f"Estado: {validacion.get('estado', 'N/D')}",
-            f"Muestras etiquetadas: {validacion.get('muestras_etiquetadas', 0)}",
-            f"Falsos positivos: {validacion.get('falsos_positivos', 0)}",
-            f"Falsos negativos: {validacion.get('falsos_negativos', 0)}",
-            f"Precision: {ReporteHtmlRenderer._formato_pct(validacion.get('precision'))}",
-            f"Sensibilidad: {ReporteHtmlRenderer._formato_pct(validacion.get('sensibilidad'))}",
+            f"Sensibilidad: {sesion.get('sensibilidad', 'N/D')}",
+            f"Calidad promedio: {ReporteHtmlRenderer._formato_pct(metricas.get('calidad_promedio'))}",
             "",
             "Recomendaciones",
         ]
-        recomendaciones = analisis.get("recomendaciones", [])
-        if isinstance(recomendaciones, list):
-            lineas.extend(f"- {item}" for item in recomendaciones)
-        else:
-            lineas.append(f"- {recomendaciones}")
-        lineas.extend(["", "Ultimas incidencias"])
+        lineas.extend(f"- {item}" for item in recomendaciones[:5])
+        lineas.extend(
+            [
+                "",
+                "Alertas relevantes",
+            ]
+        )
         eventos = payload.get("eventos", [])
         if isinstance(eventos, list) and eventos:
-            for evento in eventos[-20:]:
+            for evento in eventos[-12:]:
                 if not isinstance(evento, dict):
                     continue
                 lineas.append(
@@ -84,6 +84,16 @@ class ReportePdfRenderer:
                 )
         else:
             lineas.append("- No hay incidencias registradas.")
+        lineas.extend(
+            [
+                "",
+                "Perfil base del usuario",
+                f"Ojos base: {ReporteHtmlRenderer._formato_numero(payload.get('perfil_usuario', {}).get('base_ear'))}",
+                f"Boca base: {ReporteHtmlRenderer._formato_numero(payload.get('perfil_usuario', {}).get('base_mar'))}",
+                f"Referencia facial: {ReporteHtmlRenderer._formato_numero(payload.get('perfil_usuario', {}).get('base_ancho_cara'))}",
+                f"Muestras de calibracion: {ReporteHtmlRenderer._formato_numero(payload.get('perfil_usuario', {}).get('muestras_calibracion'))}",
+            ]
+        )
         return lineas
 
     def _crear_pdf_texto(self, lineas: list[str]) -> bytes:

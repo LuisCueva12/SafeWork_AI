@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import base64
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime
@@ -45,13 +46,23 @@ class ReporteExportService:
         destino = self._resolver_destino(output_dir)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         base = destino / f"safework_reporte_{timestamp}"
+        perfil_usuario = self._leer_json(self._profile_path, {})
+        reporte_sesion = self._leer_json(self._session_report_path, {})
+        if not isinstance(perfil_usuario, dict):
+            perfil_usuario = {}
+        if not isinstance(reporte_sesion, dict):
+            reporte_sesion = {}
+        reporte_sesion["contexto_operativo"] = self._mezclar_contexto_operativo(
+            reporte_sesion.get("contexto_operativo", {}),
+            perfil_usuario,
+        )
 
         payload = self._analisis.preparar_payload(
             {
                 "exportado_en": datetime.now().isoformat(),
-                "perfil_usuario": self._leer_json(self._profile_path, {}),
+                "perfil_usuario": perfil_usuario,
                 "resumen_incidencias": self._leer_json(self._summary_path, {}),
-                "reporte_sesion": self._leer_json(self._session_report_path, {}),
+                "reporte_sesion": reporte_sesion,
                 "eventos": self._leer_json(self._events_path, []),
                 "validacion_humana": self._leer_json(self._validation_labels_path, [])
                 if self._validation_labels_path
@@ -89,11 +100,37 @@ class ReporteExportService:
         raise PermissionError("No se encontro una carpeta disponible para exportar el reporte.")
 
     @staticmethod
+    def _mezclar_contexto_operativo(contexto: object, perfil: dict[str, object]) -> dict[str, object]:
+        base = dict(contexto) if isinstance(contexto, dict) else {}
+        mapping = {
+            "nombre": "nombre",
+            "identificador": "trabajador",
+            "rol": "rol",
+            "tipo_usuario": "tipo_usuario",
+            "area": "area",
+            "empresa": "empresa",
+            "puesto": "puesto",
+            "perfil_riesgo": "perfil_riesgo",
+        }
+        for origen, destino in mapping.items():
+            valor = str(perfil.get(origen, "")).strip()
+            if valor:
+                base[destino] = valor
+        return base
+
+    @staticmethod
     def _leer_json(path: Path | None, default):
         if path is None:
             return default
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
-            return default
+            try:
+                contenido = path.read_text(encoding="utf-8").strip()
+                decoded = bytearray(base64.b64decode(contenido.encode("utf-8")))
+                for i in range(len(decoded)):
+                    decoded[i] ^= 0x5A
+                data = json.loads(decoded.decode("utf-8"))
+            except Exception:
+                return default
         return data

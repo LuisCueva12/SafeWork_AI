@@ -8,6 +8,34 @@ from src.infrastructure.adaptadores.memoria_usuario_json_adapter import MemoriaU
 
 
 class MemoriaUsuarioJsonAdapterTest(unittest.TestCase):
+    def test_guarda_y_recupera_perfil_usuario(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            adapter = MemoriaUsuarioJsonAdapter(
+                root / "profile.json",
+                root / "events.json",
+                root / "summary.json",
+            )
+
+            perfil = adapter.guardar_perfil_usuario(
+                {
+                    "nombre": "Luis Cueva",
+                    "identificador": "lcueva",
+                    "rol": "Estudiante",
+                    "tipo_usuario": "estudiante",
+                    "empresa": "EXPOINNOVA",
+                    "area": "Investigacion",
+                    "puesto": "Analista ergonomico",
+                }
+            )
+
+            self.assertEqual(perfil["nombre"], "Luis Cueva")
+            self.assertEqual(adapter.cargar_perfil_usuario()["rol"], "Estudiante")
+            contexto = adapter.construir_contexto_operativo({"camara": "webcam"})
+            self.assertEqual(contexto["nombre"], "Luis Cueva")
+            self.assertEqual(contexto["tipo_usuario"], "estudiante")
+            self.assertEqual(contexto["camara"], "webcam")
+
     def test_construye_resumen_de_incidencias(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 import cv2
 import numpy as np
 from PyQt6.QtCore import QThread, pyqtSignal
@@ -23,6 +25,7 @@ class MotorVisionIA(QThread):
     senal_bloqueo_requerido = pyqtSignal(str)
     senal_modo_operacion = pyqtSignal(str)
     senal_error_ocurrido = pyqtSignal(str)
+    senal_ausencia_resuelta = pyqtSignal(float)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -34,15 +37,19 @@ class MotorVisionIA(QThread):
             self._settings.incidents_summary_path,
             self._settings.session_report_path,
         )
+        contexto_operativo = self._memoria_usuario.construir_contexto_operativo(
+            self._settings.contexto_operativo()
+        )
         self._monitor = MonitorSafeWorkService(
             self._settings.calibration_seconds,
             memoria_usuario=self._memoria_usuario,
             sensibilidad=self._settings.sensitivity,
             cooldown_alerta_segundos=self._settings.alert_cooldown_seconds,
-            contexto_operativo=self._settings.contexto_operativo(),
+            contexto_operativo=contexto_operativo,
         )
         self._fusion_sensores = FusionSensoresService()
         self._corriendo = True
+        self._ts_inicio_ausencia: float | None = None
 
     def detener(self) -> None:
         self._corriendo = False
@@ -98,6 +105,16 @@ class MotorVisionIA(QThread):
                 self.senal_detalle_estado.emit(resultado.detalle_estado)
                 self.senal_metricas.emit(resultado.resumen_metricas)
                 self.senal_nivel_riesgo.emit(resultado.estado_fisico.nivel_riesgo.value)
+
+                estado_actual = resultado.estado_fisico.estado
+                if estado_actual == EstadoAlerta.AUSENTE:
+                    if self._ts_inicio_ausencia is None:
+                        self._ts_inicio_ausencia = time.monotonic()
+                elif self._ts_inicio_ausencia is not None:
+                    duracion = time.monotonic() - self._ts_inicio_ausencia
+                    self._ts_inicio_ausencia = None
+                    if duracion >= 2.0:
+                        self.senal_ausencia_resuelta.emit(duracion)
                 
                 if resultado.estado_fisico.requiere_bloqueo():
                     self.senal_bloqueo_requerido.emit(resultado.mensaje_alerta or resultado.mensaje_estado)
@@ -158,9 +175,12 @@ class MotorVisionIA(QThread):
         cv2.putText(canvas, f"Estado: {estado.value}", (20, 58), cv2.FONT_HERSHEY_SIMPLEX, 0.55, color_estado, 2, cv2.LINE_AA)
 
         if lectura is not None:
+            resumen_sensores = f"Ojos {lectura.ear:.2f} | Boca {lectura.mar:.2f}"
+            if self._captura.yolo_activo():
+                resumen_sensores += f" | IA {lectura.yolo_clase} {lectura.yolo_confianza:.2f}"
             cv2.putText(
                 canvas,
-                f"Ojos {lectura.ear:.2f} | Boca {lectura.mar:.2f} | IA {lectura.yolo_clase} {lectura.yolo_confianza:.2f}",
+                resumen_sensores,
                 (20, 82),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.45,

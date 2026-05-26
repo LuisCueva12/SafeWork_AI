@@ -105,6 +105,33 @@ def construir_lectura_cabeceo_real() -> LecturaHibrida:
     return lectura
 
 
+def construir_lectura_teclado_con_yolo_debil() -> LecturaHibrida:
+    lectura = construir_lectura(ear=0.22, mar=0.12, yolo_clase="drowsy", yolo_confianza=0.64)
+    lectura.nariz = Coordenada(0.5, 0.32, -0.10, 1.0)
+    lectura.oreja_izquierda = Coordenada(0.42, 0.31, -0.08, 1.0)
+    lectura.oreja_derecha = Coordenada(0.58, 0.31, -0.08, 1.0)
+    lectura.mirando_abajo = True
+    return lectura
+
+
+def construir_lectura_movimiento_normal() -> LecturaHibrida:
+    lectura = construir_lectura(ear=0.30, mar=0.12, yolo_clase="normal")
+    lectura.nariz = Coordenada(0.5, 0.32, -0.10, 1.0)
+    lectura.oreja_izquierda = Coordenada(0.42, 0.31, -0.08, 1.0)
+    lectura.oreja_derecha = Coordenada(0.58, 0.31, -0.08, 1.0)
+    return lectura
+
+
+def construir_lectura_fuera_encuadre() -> LecturaHibrida:
+    lectura = construir_lectura(ear=0.10, mar=0.10, yolo_clase="normal")
+    lectura.nariz = Coordenada(0.02, 0.32, -0.10, 1.0)
+    lectura.hombro_izquierdo = Coordenada(0.01, 0.52, 0.0, 1.0)
+    lectura.hombro_derecho = Coordenada(0.18, 0.52, 0.0, 1.0)
+    lectura.oreja_izquierda = Coordenada(0.02, 0.31, -0.08, 1.0)
+    lectura.oreja_derecha = Coordenada(0.15, 0.31, -0.08, 1.0)
+    return lectura
+
+
 def construir_lectura_inestable() -> LecturaHibrida:
     lectura = construir_lectura(ear=0.0, mar=0.0)
     lectura.cuerpo_detectado = False
@@ -237,6 +264,30 @@ class MonitorSafeWorkServiceTest(unittest.TestCase):
         self.assertEqual(lectura.fusion_nivel, NivelRiesgo.OBSERVACION)
         self.assertEqual(resultado.estado_fisico.nivel_riesgo, NivelRiesgo.OBSERVACION)
         self.assertIsNone(resultado.mensaje_alerta)
+
+    def test_bostezo_sostenido_sin_yolo_se_detecta_por_mediapipe(self) -> None:
+        memoria = MemoriaFalsa()
+        memoria.base = {
+            "base_ear": 0.31,
+            "base_mar": 0.19,
+            "base_ancho_cara": 0.30,
+            "base_ratio_y": 1.50,
+            "base_z_nariz_rel": -0.10,
+        }
+        servicio = MonitorSafeWorkService(
+            calibracion_segundos=0.0,
+            min_muestras_calibracion=0,
+            max_duracion_calibracion_segundos=0.0,
+            memoria_usuario=memoria,
+        )
+
+        resultado = None
+        for _ in range(4):
+            resultado = servicio.procesar_lectura(construir_lectura(mar=0.46, yolo_clase="normal"))
+
+        self.assertIsNotNone(resultado)
+        self.assertEqual(resultado.estado_fisico.estado, EstadoAlerta.ADVERTENCIA_SUENO)
+        self.assertIn("bostezo_por_apertura_sostenida", resultado.estado_fisico.evidencias)
 
     def test_sensor_fusion_confirma_yolo_y_mediapipe(self) -> None:
         lectura = construir_lectura(mar=0.46, yolo_clase="Yawning", yolo_confianza=0.86)
@@ -376,12 +427,104 @@ class MonitorSafeWorkServiceTest(unittest.TestCase):
         )
 
         resultado = None
-        for _ in range(4):
+        for _ in range(5):
             resultado = servicio.procesar_lectura(construir_lectura_cabeceo_real())
 
         self.assertIsNotNone(resultado)
         self.assertEqual(resultado.estado_fisico.estado, EstadoAlerta.CABECEO)
         self.assertIn("cabeza_inclinada_con_somnolencia", resultado.estado_fisico.evidencias)
+
+    def test_mirada_al_teclado_con_yolo_debil_no_escala_a_cabeceo(self) -> None:
+        memoria = MemoriaFalsa()
+        memoria.base = {
+            "base_ear": 0.31,
+            "base_mar": 0.19,
+            "base_ancho_cara": 0.30,
+            "base_ratio_y": 1.50,
+            "base_z_nariz_rel": -0.10,
+        }
+        servicio = MonitorSafeWorkService(
+            calibracion_segundos=0.0,
+            min_muestras_calibracion=0,
+            max_duracion_calibracion_segundos=0.0,
+            memoria_usuario=memoria,
+        )
+
+        resultado = None
+        for _ in range(5):
+            resultado = servicio.procesar_lectura(construir_lectura_teclado_con_yolo_debil())
+
+        self.assertIsNotNone(resultado)
+        self.assertNotEqual(resultado.estado_fisico.estado, EstadoAlerta.CABECEO)
+        self.assertNotIn("cabeza_inclinada_con_somnolencia", resultado.estado_fisico.evidencias)
+
+    def test_movimiento_normal_no_escala_a_cabeceo(self) -> None:
+        memoria = MemoriaFalsa()
+        memoria.base = {
+            "base_ear": 0.31,
+            "base_mar": 0.19,
+            "base_ancho_cara": 0.30,
+            "base_ratio_y": 1.50,
+            "base_z_nariz_rel": -0.10,
+        }
+        servicio = MonitorSafeWorkService(
+            calibracion_segundos=0.0,
+            min_muestras_calibracion=0,
+            max_duracion_calibracion_segundos=0.0,
+            memoria_usuario=memoria,
+        )
+
+        resultado = None
+        for _ in range(6):
+            resultado = servicio.procesar_lectura(construir_lectura_movimiento_normal())
+
+        self.assertIsNotNone(resultado)
+        self.assertNotEqual(resultado.estado_fisico.estado, EstadoAlerta.CABECEO)
+        self.assertNotIn("cabeza_inclinada_con_somnolencia", resultado.estado_fisico.evidencias)
+
+    def test_salir_del_encuadre_no_escala_a_cabeceo(self) -> None:
+        memoria = MemoriaFalsa()
+        memoria.base = {
+            "base_ear": 0.31,
+            "base_mar": 0.19,
+            "base_ancho_cara": 0.30,
+            "base_ratio_y": 1.50,
+            "base_z_nariz_rel": -0.10,
+        }
+        servicio = MonitorSafeWorkService(
+            calibracion_segundos=0.0,
+            min_muestras_calibracion=0,
+            max_duracion_calibracion_segundos=0.0,
+            memoria_usuario=memoria,
+        )
+
+        resultado = servicio.procesar_lectura(construir_lectura_fuera_encuadre())
+
+        self.assertEqual(resultado.estado_fisico.estado, EstadoAlerta.LECTURA_INESTABLE)
+        self.assertIn("encuadre_incompleto", resultado.estado_fisico.evidencias)
+
+    def test_reingreso_no_dispara_cabeceo_al_sentarse(self) -> None:
+        memoria = MemoriaFalsa()
+        memoria.base = {
+            "base_ear": 0.31,
+            "base_mar": 0.19,
+            "base_ancho_cara": 0.30,
+            "base_ratio_y": 1.50,
+            "base_z_nariz_rel": -0.10,
+        }
+        servicio = MonitorSafeWorkService(
+            calibracion_segundos=0.0,
+            min_muestras_calibracion=0,
+            max_duracion_calibracion_segundos=0.0,
+            memoria_usuario=memoria,
+        )
+
+        resultado_ausencia = servicio.procesar_lectura(None)
+        resultado_reingreso = servicio.procesar_lectura(construir_lectura_cabeceo_real())
+
+        self.assertEqual(resultado_ausencia.estado_fisico.estado, EstadoAlerta.AUSENTE)
+        self.assertEqual(resultado_reingreso.estado_fisico.estado, EstadoAlerta.LECTURA_INESTABLE)
+        self.assertIn("reingreso_estabilizando", resultado_reingreso.estado_fisico.evidencias)
 
     def test_aprende_perfil_en_lecturas_estables(self) -> None:
         memoria = MemoriaFalsa()

@@ -19,7 +19,19 @@ class ReporteExportServiceTest(unittest.TestCase):
             labels = root / "validation_labels.json"
             output = root / "exports"
 
-            profile.write_text(json.dumps({"base_ear": 0.31}), encoding="utf-8")
+            profile.write_text(
+                json.dumps(
+                    {
+                        "base_ear": 0.31,
+                        "nombre": "Luis Cueva",
+                        "rol": "Estudiante",
+                        "tipo_usuario": "estudiante",
+                        "area": "Investigacion",
+                        "puesto": "Analista ergonomico",
+                    }
+                ),
+                encoding="utf-8",
+            )
             events.write_text(
                 json.dumps(
                     [
@@ -97,13 +109,13 @@ class ReporteExportServiceTest(unittest.TestCase):
             html = reporte.html_path.read_text(encoding="utf-8")
             data = json.loads(reporte.json_path.read_text(encoding="utf-8"))
             self.assertIn("Reporte SafeWork AI", html)
-            self.assertIn("Analisis de calidad de datos", html)
-            self.assertIn("Contexto de validacion", html)
-            self.assertIn("Historico agregado", html)
-            self.assertIn("Validacion del modelo", html)
-            self.assertIn("Rostro Mas Grande", html)
-            self.assertIn("Puntaje de datos", html)
-            self.assertIn("Muestras revisadas", html)
+            self.assertIn("Resumen principal", html)
+            self.assertIn("Identificacion", html)
+            self.assertIn("Persona analizada", html)
+            self.assertIn("Luis Cueva", html)
+            self.assertIn("Indicadores clave", html)
+            self.assertIn("Alertas relevantes", html)
+            self.assertIn("Perfil base del usuario", html)
             self.assertEqual(data["resumen_incidencias"]["total_incidencias"], 1)
             self.assertIn("analisis_calidad_datos", data)
             self.assertGreaterEqual(data["analisis_calidad_datos"]["puntaje_calidad_datos"], 85)

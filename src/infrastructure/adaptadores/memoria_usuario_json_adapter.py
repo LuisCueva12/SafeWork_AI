@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -92,7 +93,41 @@ class MemoriaUsuarioJsonAdapter:
             return {}
         return {k: float(v) for k, v in data.items() if isinstance(v, (int, float))}
 
+    def cargar_perfil_usuario(self) -> dict[str, str]:
+        data = self._leer_archivo_seguro(self._profile_path)
+        if not isinstance(data, dict):
+            data = {}
+        return self._normalizar_perfil_usuario(data)
+
+    def guardar_perfil_usuario(self, perfil: dict[str, object]) -> dict[str, str]:
+        existente = self._leer_archivo_seguro(self._profile_path)
+        if not isinstance(existente, dict):
+            existente = {}
+        existente.update(self._normalizar_perfil_usuario(perfil))
+        self._escribir_archivo_seguro(self._profile_path, existente)
+        return self._normalizar_perfil_usuario(existente)
+
+    def construir_contexto_operativo(self, base: dict[str, str] | None = None) -> dict[str, str]:
+        contexto = dict(base or {})
+        perfil = self.cargar_perfil_usuario()
+        contexto.update(
+            {
+                "empresa": perfil.get("empresa", contexto.get("empresa", "No especificada")),
+                "trabajador": perfil.get("identificador", perfil.get("nombre", contexto.get("trabajador", "No especificado"))),
+                "nombre": perfil.get("nombre", contexto.get("nombre", "No especificado")),
+                "rol": perfil.get("rol", contexto.get("rol", "No especificado")),
+                "tipo_usuario": perfil.get("tipo_usuario", contexto.get("tipo_usuario", "empleado")),
+                "area": perfil.get("area", contexto.get("area", "No especificada")),
+                "puesto": perfil.get("puesto", contexto.get("puesto", "No especificado")),
+                "perfil_riesgo": perfil.get("perfil_riesgo", contexto.get("perfil_riesgo", "estandar")),
+            }
+        )
+        return contexto
+
     def guardar_sesion_base(self, sesion: SesionTrabajador) -> None:
+        existente = self._leer_archivo_seguro(self._profile_path)
+        if not isinstance(existente, dict):
+            existente = {}
         payload = {
             "base_ancho_hombros": sesion.base_ancho_hombros,
             "base_ratio_y": sesion.base_ratio_y,
@@ -103,7 +138,8 @@ class MemoriaUsuarioJsonAdapter:
             "muestras_calibracion": float(sesion.muestras_calibracion),
             "updated_at": datetime.now().timestamp(),
         }
-        self._escribir_archivo_seguro(self._profile_path, payload)
+        existente.update(payload)
+        self._escribir_archivo_seguro(self._profile_path, existente)
 
     def registrar_evento(self, evento: dict[str, object]) -> None:
         eventos = self._leer_eventos()
@@ -223,3 +259,23 @@ class MemoriaUsuarioJsonAdapter:
             return datetime.fromisoformat(valor)
         except ValueError:
             return None
+
+    @staticmethod
+    def _normalizar_perfil_usuario(data: dict[str, object]) -> dict[str, str]:
+        username = os.getenv("USERNAME", "usuario_local").strip() or "usuario_local"
+        nombre_default = username.replace(".", " ").replace("_", " ").title()
+
+        def texto(clave: str, defecto: str) -> str:
+            valor = str(data.get(clave, defecto)).strip()
+            return valor or defecto
+
+        return {
+            "nombre": texto("nombre", nombre_default),
+            "identificador": texto("identificador", username.lower()),
+            "rol": texto("rol", "Usuario"),
+            "tipo_usuario": texto("tipo_usuario", "empleado"),
+            "area": texto("area", "General"),
+            "empresa": texto("empresa", "Organizacion local"),
+            "puesto": texto("puesto", "No especificado"),
+            "perfil_riesgo": texto("perfil_riesgo", "estandar"),
+        }

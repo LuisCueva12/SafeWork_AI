@@ -65,6 +65,7 @@ class MonitorSafeWorkService:
             )
 
         if lectura is None or (not lectura.rostro_detectado and not lectura.cuerpo_detectado):
+            self._sesion.registrar_ausencia()
             estado = EstadoFisico(
                 0.0,
                 0.0,
@@ -86,6 +87,28 @@ class MonitorSafeWorkService:
             )
 
         self._sesion.registrar_deteccion()
+        if self._sesion.en_ventana_reingreso():
+            estado = EstadoFisico(
+                lectura.ear,
+                lectura.mar,
+                0.0,
+                0.0,
+                0.0,
+                EstadoAlerta.LECTURA_INESTABLE,
+                calidad_deteccion=max(60.0, self._ultima_calidad_deteccion),
+                puntajes_riesgo={"calidad": int(round(max(60.0, self._ultima_calidad_deteccion))), "cercania": 0, "postura": 0, "fatiga": 0},
+                evidencias=("reingreso_estabilizando",),
+                accion_recomendada="Permanece estable un instante mientras se normaliza la lectura.",
+            )
+            self._ultima_calidad_deteccion = estado.calidad_deteccion
+            self._ultimo_estado_confirmado = estado.estado
+            return ResultadoMonitoreo(
+                estado_fisico=estado,
+                mensaje_estado=estado.estado.value,
+                detalle_estado="Reingreso detectado: estabilizando la lectura antes de evaluar riesgos.",
+                resumen_metricas="Reingreso detectado. Esperando estabilidad de postura y rostro.",
+            )
+
         estado = analizar_lectura_hibrida(lectura, self._sesion)
         self._ultima_calidad_deteccion = estado.calidad_deteccion
         self._ultimo_estado_confirmado = estado.estado

@@ -18,6 +18,10 @@ class VozQThreadAdapter(QThread):
         if mensaje:
             self._cola.put(mensaje)
 
+    def limpiar_cola(self) -> None:
+        with self._cola.mutex:
+            self._cola.queue.clear()
+
     def detener(self) -> None:
         self._cola.put(None)
         self.wait(3000)

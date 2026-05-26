@@ -111,12 +111,19 @@ class CapturaHibridaAdapter(PuertoCapturaCorporal):
         return self._captura_video is not None and self._captura_video.isOpened()
 
     def resumen_runtime(self) -> str:
-        if not self._avisos_runtime:
+        if self._modelo_yolo is not None:
             return "Motor hibrido listo: MediaPipe y YOLO disponibles."
-        return " | ".join(self._avisos_runtime)
+        if self._face_landmarker is not None and self._pose_landmarker is not None:
+            return "Motor visual activo: analisis postural y ocular disponibles."
+        if self._avisos_runtime:
+            return self._avisos_runtime[0]
+        return "Motor visual activo."
 
     def modo_degradado(self) -> bool:
         return self._modo_degradado
+
+    def yolo_activo(self) -> bool:
+        return self._modelo_yolo is not None
 
     def _configurar_ultralytics(self) -> None:
         os.environ["YOLO_CONFIG_DIR"] = str(self._settings.yolo_config_dir)
@@ -282,9 +289,15 @@ class CapturaHibridaAdapter(PuertoCapturaCorporal):
         if alto_izq <= 0 or alto_der <= 0:
             return False
 
+        # Si el ojo esta casi cerrado, la posicion del iris deja de ser estable
+        # y no conviene usarla para distinguir mirar al teclado vs somnolencia.
+        if alto_izq < 0.010 or alto_der < 0.010:
+            return False
+
         pos_izq = (iris_izq_y - ojo_izq_top_y) / alto_izq
         pos_der = (iris_der_y - ojo_der_top_y) / alto_der
-        return pos_izq > 0.75 or pos_der > 0.75
+        promedio = (pos_izq + pos_der) / 2.0
+        return promedio > 0.72 and max(pos_izq, pos_der) > 0.76
 
     def _mano_sobre_rostro(self, nariz: Coordenada, point_to_coord) -> bool:
         if not nariz.es_confiable():

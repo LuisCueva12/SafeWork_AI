@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+import importlib.util
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -66,7 +67,7 @@ class SafeWorkSettings:
             incidents_summary_path=app_data_dir / "incident_summary.json",
             session_report_path=app_data_dir / "session_report.json",
             validation_labels_path=app_data_dir / "validation_labels.json",
-            yolo_model_path=assets_dir / "yolov8n-drowsiness.onnx",
+            yolo_model_path=cls._resolver_yolo_model_path(assets_dir, app_data_dir),
             face_model_path=assets_dir / "face_landmarker.task",
             pose_model_path=assets_dir / "pose_landmarker_lite.task",
             company_name=os.getenv("SAFEWORK_COMPANY_NAME", "Softech Peru").strip() or "Softech Peru",
@@ -100,8 +101,48 @@ class SafeWorkSettings:
                 "No se encontro el modelo YOLO de somnolencia. "
                 "El monitoreo seguira activo en modo degradado con MediaPipe."
             )
+        else:
+            sufijo = self.yolo_model_path.suffix.lower()
+            if sufijo == ".onnx" and importlib.util.find_spec("onnxruntime") is None:
+                avisos.append(
+                    "El modelo YOLO esta en formato ONNX, pero onnxruntime no esta instalado. "
+                    "El monitoreo YOLO no podra inicializarse."
+                )
+            if importlib.util.find_spec("ultralytics") is None:
+                avisos.append(
+                    "Ultralytics no esta instalado en este entorno. "
+                    "El monitoreo YOLO no podra inicializarse."
+                )
 
         return errores, avisos
+
+    @staticmethod
+    def _resolver_yolo_model_path(assets_dir: Path, app_data_dir: Path) -> Path:
+        ruta_env = os.getenv("SAFEWORK_YOLO_MODEL_PATH", "").strip()
+        if ruta_env:
+            ruta = Path(ruta_env).expanduser()
+            if ruta.exists():
+                return ruta
+
+        candidatos = (
+            assets_dir / "yolov8n-drowsiness.onnx",
+            assets_dir / "yolov8n-drowsiness.pt",
+            assets_dir / "drowsiness.onnx",
+            assets_dir / "drowsiness.pt",
+            assets_dir / "best.onnx",
+            assets_dir / "best.pt",
+            app_data_dir / "yolov8n-drowsiness.onnx",
+            app_data_dir / "yolov8n-drowsiness.pt",
+            app_data_dir / "drowsiness.onnx",
+            app_data_dir / "drowsiness.pt",
+            app_data_dir / "best.onnx",
+            app_data_dir / "best.pt",
+        )
+        for candidato in candidatos:
+            if candidato.exists():
+                return candidato
+
+        return assets_dir / "yolov8n-drowsiness.onnx"
 
     @staticmethod
     def _resolver_project_root() -> Path:

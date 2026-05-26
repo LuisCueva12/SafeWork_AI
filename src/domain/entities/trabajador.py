@@ -14,6 +14,8 @@ COOLDOWN_ALERTA_SEGUNDOS = 45
 class SesionTrabajador:
     inicio_sesion: datetime = field(default_factory=datetime.now)
     ultima_deteccion_exitosa: datetime = field(default_factory=datetime.now)
+    inicio_ausencia: datetime | None = None
+    ultimo_reingreso: datetime | None = None
     
     inicio_ojos_cerrados: datetime | None = None
     ultimo_registro_ojos_cerrados: datetime | None = None
@@ -24,6 +26,7 @@ class SesionTrabajador:
     historial_bostezos: list[datetime] = field(default_factory=list)
     bostezo_actual_activo: bool = False
     inicio_bostezo_actual: float | None = None
+    ultimo_bostezo_confirmado: datetime | None = None
     promedio_duracion_bostezo: float = 3.0
     
     inicio_mala_postura: datetime | None = None
@@ -51,6 +54,8 @@ class SesionTrabajador:
     total_lecturas_validas: int = 0
     racha_yolo_sueno: int = 0
     racha_yolo_bostezo: int = 0
+    racha_ojos_cerrados: int = 0
+    racha_boca_abierta: int = 0
     racha_estable: int = 0
     racha_cercania_monitor: int = 0
     racha_postura_riesgo: int = 0
@@ -78,19 +83,35 @@ class SesionTrabajador:
             self.historial_mar.pop(0)
 
     def registrar_deteccion(self) -> None:
-        self.ultima_deteccion_exitosa = datetime.now()
+        now = datetime.now()
+        if self.inicio_ausencia is not None:
+            self.ultimo_reingreso = now
+            self.inicio_ausencia = None
+        self.ultima_deteccion_exitosa = now
         self.total_lecturas_validas += 1
+
+    def registrar_ausencia(self) -> None:
+        if self.inicio_ausencia is None:
+            self.inicio_ausencia = datetime.now()
+        self.limpiar_estado_transitorio()
   
     def segundos_sin_deteccion(self) -> float:
         return (datetime.now() - self.ultima_deteccion_exitosa).total_seconds()
+
+    def en_ventana_reingreso(self, segundos_estabilizacion: float = 1.6) -> bool:
+        if self.ultimo_reingreso is None:
+            return False
+        return (datetime.now() - self.ultimo_reingreso).total_seconds() < segundos_estabilizacion
   
     def registrar_ojos_cerrados(self) -> None:
         now = datetime.now()
         if self.inicio_ojos_cerrados is None:
             self.inicio_ojos_cerrados = now
         self.ultimo_registro_ojos_cerrados = now
+        self.racha_ojos_cerrados = min(240, self.racha_ojos_cerrados + 1)
   
     def registrar_ojos_abiertos(self) -> None:
+        self.racha_ojos_cerrados = max(0, self.racha_ojos_cerrados - 2)
         if self.inicio_ojos_cerrados is not None:
             if (datetime.now() - self.ultimo_registro_ojos_cerrados).total_seconds() > 0.5:
                 self.inicio_ojos_cerrados = None
@@ -151,6 +172,19 @@ class SesionTrabajador:
   
     def finalizar_bostezo(self) -> None:
         self.bostezo_actual_activo = False
+
+    def confirmar_bostezo(self, intervalo_minimo_segundos: float = 2.0) -> bool:
+        now = datetime.now()
+        if self.ultimo_bostezo_confirmado is not None:
+            delta = (now - self.ultimo_bostezo_confirmado).total_seconds()
+            if delta < intervalo_minimo_segundos:
+                return False
+        self.historial_bostezos.append(now)
+        self.ultimo_bostezo_confirmado = now
+        self.bostezo_actual_activo = False
+        self.inicio_bostezo_actual = None
+        self.racha_boca_abierta = 0
+        return True
   
     def limpiar_bostezos_antiguos(self) -> None:
         limite = datetime.now() - timedelta(minutes=VENTANA_BOSTEZOS_MINUTOS)
@@ -168,8 +202,35 @@ class SesionTrabajador:
         self.ultimo_registro_cabeceo = None
         self.historial_bostezos.clear()
         self.bostezo_actual_activo = False
+        self.inicio_bostezo_actual = None
+        self.ultimo_bostezo_confirmado = None
         self.racha_yolo_sueno = 0
         self.racha_yolo_bostezo = 0
+        self.racha_ojos_cerrados = 0
+        self.racha_boca_abierta = 0
+        self.indice_fatiga = 0.0
+ 
+    def limpiar_estado_transitorio(self) -> None:
+        self.inicio_ojos_cerrados = None
+        self.ultimo_registro_ojos_cerrados = None
+        self.inicio_cabeceo = None
+        self.ultimo_registro_cabeceo = None
+        self.inicio_mala_postura = None
+        self.ultimo_registro_mala_postura = None
+        self.inicio_cercania_monitor = None
+        self.ultimo_registro_cercania_monitor = None
+        self.historial_bostezos.clear()
+        self.bostezo_actual_activo = False
+        self.inicio_bostezo_actual = None
+        self.ultimo_bostezo_confirmado = None
+        self.racha_yolo_sueno = 0
+        self.racha_yolo_bostezo = 0
+        self.racha_ojos_cerrados = 0
+        self.racha_boca_abierta = 0
+        self.racha_estable = 0
+        self.racha_cercania_monitor = 0
+        self.racha_postura_riesgo = 0
+        self.racha_cabeceo_riesgo = 0
         self.indice_fatiga = 0.0
   
     def duracion_sesion(self) -> timedelta:
