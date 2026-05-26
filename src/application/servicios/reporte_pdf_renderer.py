@@ -47,7 +47,7 @@ class _SafeWorkPdf(FPDF):
         self._footer_documento()
 
     def _header_documento(self, payload: dict[str, object], titulo: str) -> None:
-        self.set_fill_color(*self.brand)
+        self.set_fill_color(255, 255, 255)
         self.rect(0, 0, 210, 38, "F")
 
         logo = self._logo_path()
@@ -55,17 +55,17 @@ class _SafeWorkPdf(FPDF):
             try:
                 self.image(str(logo), x=12, y=8, w=42)
             except Exception:
-                self._texto(12, 14, "SafeWork AI", size=15, color=(255, 255, 255), bold=True)
+                self._texto(12, 14, "SafeWork AI", size=15, color=self.brand, bold=True)
         else:
-            self._texto(12, 14, "SafeWork AI", size=15, color=(255, 255, 255), bold=True)
+            self._texto(12, 14, "SafeWork AI", size=15, color=self.brand, bold=True)
 
-        self._texto(70, 10, titulo, size=18, color=(255, 255, 255), bold=True)
+        self._texto(70, 10, titulo, size=18, color=self.ink, bold=True)
         self._texto(
             70,
             20,
             "Monitoreo de postura, fatiga visual y distancia frente al computador",
             size=8.5,
-            color=(191, 219, 254),
+            color=self.muted,
             max_width=82,
         )
         self._pill(154, 10, self._estado_sistema(payload), w=44)
@@ -262,7 +262,11 @@ class _SafeWorkPdf(FPDF):
             for value, width in zip(row, widths):
                 self.set_xy(x + 2, y + 2.5)
                 self.set_text_color(*self.ink)
-                self.cell(width - 4, 4, self._safe(str(value))[:58], border=0)
+                contenido = self._safe(str(value))
+                max_w = width - 4
+                while self.get_string_width(contenido) > max_w and len(contenido) > 3:
+                    contenido = contenido[:-4].rstrip() + "..."
+                self.cell(max_w, 4, contenido, border=0)
                 x += width
             self.set_y(y + row_height)
         self.ln(4)

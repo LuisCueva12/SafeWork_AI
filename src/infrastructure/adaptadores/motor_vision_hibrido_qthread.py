@@ -124,7 +124,6 @@ class MotorVisionIA(QThread):
                         frame_anotado = self._dibujar_overlay(frame, lectura, resultado.estado_fisico.estado)
                         self._emitir_frame(frame_anotado)
                     except Exception:
-                        # Fallback en caso de que falle el dibujo en el frame, emitimos el frame original
                         self._emitir_frame(frame)
 
                 self.msleep(self._settings.frame_interval_ms)
@@ -160,9 +159,8 @@ class MotorVisionIA(QThread):
         estado: EstadoAlerta,
     ) -> np.ndarray:
         alto, ancho = frame_bgr.shape[:2]
-        pad_top = 96  # Espacio para el overlay
+        pad_top = 96 
 
-        # Crear canvas más alto para no tapar la cámara
         canvas = np.zeros((alto + pad_top, ancho, 3), dtype=np.uint8)
         canvas[pad_top:, :] = frame_bgr
 
