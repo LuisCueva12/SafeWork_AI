@@ -7,6 +7,7 @@ class ReporteAnalisisService:
     def preparar_payload(self, payload: dict[str, object]) -> dict[str, object]:
         enriquecido = dict(payload)
         enriquecido["resumen_incidencias"] = self.normalizar_resumen_incidencias(enriquecido)
+        enriquecido["resumen_jornada"] = self.construir_resumen_jornada(enriquecido)
         enriquecido["analisis_calidad_datos"] = self.analizar_calidad_datos(enriquecido)
         enriquecido["validacion_modelo"] = self.analizar_validacion_modelo(enriquecido)
         return enriquecido
@@ -32,6 +33,68 @@ class ReporteAnalisisService:
         if not isinstance(metricas, dict) or "periodos" not in metricas:
             resumen["metricas_agregadas"] = self.construir_metricas_desde_eventos(eventos)
         return resumen
+
+    def construir_resumen_jornada(self, payload: dict[str, object]) -> dict[str, object]:
+        eventos = self._eventos_validos(payload.get("eventos", []))
+        fecha_objetivo = self._resolver_fecha_jornada(payload, eventos)
+        eventos_dia = [
+            evento for evento in eventos
+            if (fecha := self.parsear_fecha(evento.get("timestamp"))) is not None
+            and fecha.date() == fecha_objetivo.date()
+        ]
+        sesion = payload.get("reporte_sesion", {})
+        if not isinstance(sesion, dict):
+            sesion = {}
+
+        por_categoria: dict[str, int] = {}
+        por_estado: dict[str, int] = {}
+        calidades: list[float] = []
+        for evento in eventos_dia:
+            categoria = self.texto_legible(evento.get("categoria", "general"))
+            estado = self.texto_legible(evento.get("estado", "incidencia"))
+            por_categoria[categoria] = por_categoria.get(categoria, 0) + 1
+            por_estado[estado] = por_estado.get(estado, 0) + 1
+            calidad = self.normalizar_porcentaje(self.to_float(evento.get("calidad_deteccion"), None))
+            if calidad is not None:
+                calidades.append(calidad)
+
+        estado_jornada = "Sin Incidencias"
+        if por_estado:
+            estado_jornada = max(por_estado.items(), key=lambda item: item[1])[0]
+        elif sesion.get("estado_actual"):
+            estado_jornada = self.texto_legible(sesion.get("estado_actual"))
+
+        calidad_promedio = round(sum(calidades) / len(calidades), 1) if calidades else None
+        if calidad_promedio is None:
+            calidad_promedio = self.normalizar_porcentaje(self.to_float(sesion.get("calidad_ultima_lectura"), None))
+
+        return {
+            "fecha": fecha_objetivo.date().isoformat(),
+            "estado_jornada": estado_jornada,
+            "total_eventos": len(eventos_dia),
+            "por_categoria": por_categoria,
+            "por_estado": por_estado,
+            "calidad_promedio": calidad_promedio,
+            "lecturas_validas": int(self.to_float(sesion.get("lecturas_validas"), 0) or 0),
+            "alertas_emitidas": int(self.to_float(sesion.get("alertas_emitidas"), 0) or 0),
+            "duracion_sesion_segundos": self.to_float(sesion.get("duracion_sesion_segundos"), 0.0) or 0.0,
+            "eventos_relevantes": eventos_dia[-10:],
+        }
+
+    def _resolver_fecha_jornada(self, payload: dict[str, object], eventos: list[dict[str, object]]) -> datetime:
+        fecha_configurada = self.parsear_fecha(payload.get("fecha_jornada"))
+        if fecha_configurada is not None:
+            return fecha_configurada
+
+        fechas_eventos = [
+            fecha for evento in eventos
+            if (fecha := self.parsear_fecha(evento.get("timestamp"))) is not None
+        ]
+        if fechas_eventos:
+            return max(fechas_eventos)
+
+        fecha_exportacion = self.parsear_fecha(payload.get("exportado_en"))
+        return fecha_exportacion or datetime.now()
 
     def construir_metricas_desde_eventos(self, eventos: list[dict[str, object]]) -> dict[str, object]:
         ahora = datetime.now()

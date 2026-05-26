@@ -9,7 +9,7 @@ from src.application.servicios import ReporteExportService
 
 
 class ReporteExportServiceTest(unittest.TestCase):
-    def test_exporta_reporte_html_y_json(self) -> None:
+    def test_exporta_reporte_pdf_jornada_global_y_json(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             profile = root / "user_profile.json"
@@ -102,21 +102,17 @@ class ReporteExportServiceTest(unittest.TestCase):
             exportador = ReporteExportService(profile, events, summary, session, output, validation_labels_path=labels)
             reporte = exportador.exportar()
 
-            self.assertTrue(reporte.html_path.exists())
             self.assertTrue(reporte.json_path.exists())
-            self.assertIsNotNone(reporte.pdf_path)
             self.assertTrue(reporte.pdf_path.exists())
-            html = reporte.html_path.read_text(encoding="utf-8")
+            self.assertTrue(reporte.historial_pdf_path.exists())
+            self.assertGreater(reporte.pdf_path.stat().st_size, 5000)
+            self.assertGreater(reporte.historial_pdf_path.stat().st_size, 5000)
+            self.assertFalse(any(output.glob("*.html")))
             data = json.loads(reporte.json_path.read_text(encoding="utf-8"))
-            self.assertIn("Reporte SafeWork AI", html)
-            self.assertIn("Resumen principal", html)
-            self.assertIn("Identificacion", html)
-            self.assertIn("Persona analizada", html)
-            self.assertIn("Luis Cueva", html)
-            self.assertIn("Indicadores clave", html)
-            self.assertIn("Alertas relevantes", html)
-            self.assertIn("Perfil base del usuario", html)
             self.assertEqual(data["resumen_incidencias"]["total_incidencias"], 1)
+            self.assertIn("resumen_jornada", data)
+            self.assertEqual(data["resumen_jornada"]["fecha"], "2026-05-18")
+            self.assertEqual(data["resumen_jornada"]["total_eventos"], 1)
             self.assertIn("analisis_calidad_datos", data)
             self.assertGreaterEqual(data["analisis_calidad_datos"]["puntaje_calidad_datos"], 85)
             self.assertEqual(data["analisis_calidad_datos"]["estado_sistema"], "CONFIABILIDAD ALTA")

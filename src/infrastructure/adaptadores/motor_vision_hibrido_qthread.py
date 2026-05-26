@@ -159,8 +159,12 @@ class MotorVisionIA(QThread):
         lectura: LecturaHibrida | None,
         estado: EstadoAlerta,
     ) -> np.ndarray:
-        canvas = frame_bgr.copy()
-        alto, ancho = canvas.shape[:2]
+        alto, ancho = frame_bgr.shape[:2]
+        pad_top = 96  # Espacio para el overlay
+
+        # Crear canvas más alto para no tapar la cámara
+        canvas = np.zeros((alto + pad_top, ancho, 3), dtype=np.uint8)
+        canvas[pad_top:, :] = frame_bgr
 
         color_estado = (34, 197, 94)
         if estado == EstadoAlerta.CALIBRANDO:
@@ -170,7 +174,7 @@ class MotorVisionIA(QThread):
         elif estado in (EstadoAlerta.MALA_POSTURA, EstadoAlerta.CERCANIA_MONITOR, EstadoAlerta.ADVERTENCIA_SUENO):
             color_estado = (0, 140, 255)
 
-        cv2.rectangle(canvas, (0, 0), (ancho, 92), (15, 23, 42), -1)
+        cv2.rectangle(canvas, (0, 0), (ancho, pad_top), (15, 23, 42), -1)
         cv2.putText(canvas, "SAFEWORK AI", (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (241, 245, 249), 2, cv2.LINE_AA)
         cv2.putText(canvas, f"Estado: {estado.value}", (20, 58), cv2.FONT_HERSHEY_SIMPLEX, 0.55, color_estado, 2, cv2.LINE_AA)
 
@@ -181,21 +185,21 @@ class MotorVisionIA(QThread):
             cv2.putText(
                 canvas,
                 resumen_sensores,
-                (20, 82),
+                (20, 84),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.45,
                 (203, 213, 225),
                 1,
                 cv2.LINE_AA,
             )
-            self._dibujar_referencias_corporales(canvas, lectura, ancho, alto)
+            self._dibujar_referencias_corporales(canvas, lectura, ancho, alto, pad_top)
         else:
-            cv2.putText(canvas, "Sin lectura disponible", (20, 82), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (148, 163, 184), 1, cv2.LINE_AA)
+            cv2.putText(canvas, "Sin lectura disponible", (20, 84), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (148, 163, 184), 1, cv2.LINE_AA)
 
         return canvas
 
     @staticmethod
-    def _dibujar_referencias_corporales(canvas: np.ndarray, lectura: LecturaHibrida, ancho: int, alto: int) -> None:
+    def _dibujar_referencias_corporales(canvas: np.ndarray, lectura: LecturaHibrida, ancho: int, alto: int, pad_y: int = 0) -> None:
         if not lectura.cuerpo_detectado:
             return
 
@@ -203,7 +207,7 @@ class MotorVisionIA(QThread):
         proyectados = []
         for punto in puntos:
             if punto.es_confiable():
-                proyectados.append((int(punto.x * ancho), int(punto.y * alto)))
+                proyectados.append((int(punto.x * ancho), int(punto.y * alto) + pad_y))
             else:
                 proyectados.append(None)
 

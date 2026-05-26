@@ -14,6 +14,8 @@ RIESGO_OBSERVACION_SEGUNDOS = 3.0
 RIESGO_LEVE_SEGUNDOS = 10.0
 RIESGO_CRITICO_SEGUNDOS = 20.0
 CALIDAD_MINIMA_LECTURA = 55.0
+RACHA_CERCANIA_CONFIRMADA = 12
+RACHA_POSTURA_CONFIRMADA = 45
 
 
 def _existe_oclusion_consciente(
@@ -195,8 +197,8 @@ def calcular_postura(lectura: LecturaHibrida, sesion: SesionTrabajador) -> tuple
     ancho_hombros, ratio_y = calcular_ratio_postural(lectura)
     if ancho_hombros > 0 and sesion.base_ratio_y > 0:
         diferencia_ratio = sesion.base_ratio_y - ratio_y
-        if diferencia_ratio > 0:
-            cuello = diferencia_ratio * 320.0
+        if diferencia_ratio > 0.04:
+            cuello = (diferencia_ratio - 0.04) * 350.0
     if lectura.oreja_izquierda.es_confiable() and lectura.oreja_derecha.es_confiable() and lectura.hombro_izquierdo.es_confiable() and lectura.hombro_derecho.es_confiable():
         angulo_hombros = calcular_angulo_horizontal(lectura.hombro_izquierdo, lectura.hombro_derecho)
         angulo_orejas = calcular_angulo_horizontal(lectura.oreja_izquierda, lectura.oreja_derecha)
@@ -428,7 +430,7 @@ def analizar_lectura_hibrida(lectura: LecturaHibrida, sesion: SesionTrabajador) 
         angulo_lateral = angulo_lateral * 0.45
         proximidad_monitor = proximidad_monitor * 0.55
     elif mirada_abajo_neutra:
-        angulo_cuello = angulo_cuello * 0.88
+        angulo_cuello = angulo_cuello * 0.40
 
     evidencia_fatiga_ocular = (
         es_clase_fatiga(clase)
@@ -537,13 +539,19 @@ def analizar_lectura_hibrida(lectura: LecturaHibrida, sesion: SesionTrabajador) 
     ):
         estado = EstadoAlerta.FATIGA_EXTREMA
         duracion_riesgo = max(sesion.segundos_ojos_cerrados(), UMBRAL_OJOS_CERRADOS_SEGUNDOS)
-    elif sesion.segundos_cabeceo() >= 2.5 or sesion.racha_cabeceo_riesgo >= 2:
+    elif sesion.segundos_cabeceo() >= 2.5 or sesion.racha_cabeceo_riesgo >= 25:
         estado = EstadoAlerta.CABECEO
         duracion_riesgo = sesion.segundos_cabeceo()
-    elif sesion.segundos_cercania_monitor() >= RIESGO_OBSERVACION_SEGUNDOS or sesion.racha_cercania_monitor >= 3:
+    elif (
+        sesion.segundos_cercania_monitor() >= RIESGO_OBSERVACION_SEGUNDOS
+        or sesion.racha_cercania_monitor >= RACHA_CERCANIA_CONFIRMADA
+    ):
         estado = EstadoAlerta.CERCANIA_MONITOR
         duracion_riesgo = sesion.segundos_cercania_monitor()
-    elif sesion.segundos_mala_postura() >= RIESGO_OBSERVACION_SEGUNDOS or sesion.racha_postura_riesgo >= 4:
+    elif (
+        sesion.segundos_mala_postura() >= 4.5
+        or sesion.racha_postura_riesgo >= RACHA_POSTURA_CONFIRMADA
+    ):
         estado = EstadoAlerta.MALA_POSTURA
         duracion_riesgo = sesion.segundos_mala_postura()
     elif sesion.cantidad_bostezos_recientes() >= MAX_BOSTEZOS_PERMITIDOS or sesion.indice_fatiga >= 0.85:
@@ -568,7 +576,7 @@ def analizar_lectura_hibrida(lectura: LecturaHibrida, sesion: SesionTrabajador) 
         evidencias.append("yolo_baja_confianza")
 
     estado_raw = estado
-    estado, estado_retenido_por_histeresis = sesion.aplicar_histeresis_estado(estado)
+    estado, estado_retenido_por_histeresis = sesion.aplicar_histeresis_estado(estado, salida_segundos=0.5)
     if estado_retenido_por_histeresis and estado_raw == EstadoAlerta.OPTIMO:
         nivel_riesgo = NivelRiesgo.OBSERVACION
         duracion_riesgo = 0.0

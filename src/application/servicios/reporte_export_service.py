@@ -8,15 +8,14 @@ from datetime import datetime
 from pathlib import Path
 
 from .reporte_analisis_service import ReporteAnalisisService
-from .reporte_html_renderer import ReporteHtmlRenderer
 from .reporte_pdf_renderer import ReportePdfRenderer
 
 
 @dataclass(frozen=True)
 class ReporteExportado:
-    html_path: Path
     json_path: Path
-    pdf_path: Path | None = None
+    pdf_path: Path
+    historial_pdf_path: Path
 
 
 class ReporteExportService:
@@ -29,7 +28,6 @@ class ReporteExportService:
         output_dir: Path | None = None,
         validation_labels_path: Path | None = None,
         analisis_service: ReporteAnalisisService | None = None,
-        html_renderer: ReporteHtmlRenderer | None = None,
         pdf_renderer: ReportePdfRenderer | None = None,
     ) -> None:
         self._profile_path = profile_path
@@ -39,13 +37,13 @@ class ReporteExportService:
         self._output_dir = output_dir or (Path.home() / "Documents" / "SafeWork AI Reports")
         self._validation_labels_path = validation_labels_path
         self._analisis = analisis_service or ReporteAnalisisService()
-        self._html_renderer = html_renderer or ReporteHtmlRenderer()
         self._pdf_renderer = pdf_renderer or ReportePdfRenderer()
 
     def exportar(self, output_dir: Path | None = None) -> ReporteExportado:
         destino = self._resolver_destino(output_dir)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        base = destino / f"safework_reporte_{timestamp}"
+        base_jornada = destino / f"safework_reporte_jornada_{timestamp}"
+        base_historial = destino / f"safework_historial_global_{timestamp}"
         perfil_usuario = self._leer_json(self._profile_path, {})
         reporte_sesion = self._leer_json(self._session_report_path, {})
         if not isinstance(perfil_usuario, dict):
@@ -70,13 +68,13 @@ class ReporteExportService:
             }
         )
 
-        json_path = base.with_suffix(".json")
-        html_path = base.with_suffix(".html")
-        pdf_path = base.with_suffix(".pdf")
+        json_path = base_jornada.with_suffix(".json")
+        pdf_path = base_jornada.with_suffix(".pdf")
+        historial_pdf_path = base_historial.with_suffix(".pdf")
         json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        html_path.write_text(self._html_renderer.renderizar(payload), encoding="utf-8")
-        pdf_path.write_bytes(self._pdf_renderer.renderizar(payload))
-        return ReporteExportado(html_path=html_path, json_path=json_path, pdf_path=pdf_path)
+        pdf_path.write_bytes(self._pdf_renderer.renderizar(payload, modo="jornada"))
+        historial_pdf_path.write_bytes(self._pdf_renderer.renderizar(payload, modo="global"))
+        return ReporteExportado(json_path=json_path, pdf_path=pdf_path, historial_pdf_path=historial_pdf_path)
 
     def _resolver_destino(self, output_dir: Path | None) -> Path:
         candidatos = [

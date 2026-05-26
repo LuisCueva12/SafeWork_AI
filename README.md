@@ -115,3 +115,21 @@ Al terminar, el ejecutable empaquetado estará disponible en la ruta:
 ## 📄 Licencia
 
 Este proyecto está licenciado bajo la **MIT License** — Copyright (c) 2026 Luis Cueva & UPN Project Team. Consulta el archivo `LICENSE` para más información.
+
+---
+
+## Manual actualizado de demo y pruebas
+
+Para grabar el video demo y validar el sistema antes de presentarlo, usar:
+
+`MANUAL_DEMO_PRUEBAS.md`
+
+Ese manual contiene el guion del video, las pruebas funcionales obligatorias, los criterios para validar postura, fatiga, bostezo, ausencia, reingreso, perfil de usuario y exportacion de reportes.
+
+Flujo vigente para la demo:
+
+- Reporte por jornada en PDF profesional.
+- Historial global en PDF profesional.
+- Respaldo tecnico en JSON.
+- No presentar exportacion HTML como parte del flujo actual.
+

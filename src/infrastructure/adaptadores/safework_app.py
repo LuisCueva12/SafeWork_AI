@@ -329,7 +329,7 @@ class SafeWorkApp(QMainWindow):
 
         self._video = QLabel("Inicializando camara y modelos de IA...")
         self._video.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._video.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self._video.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         self._video.setMinimumSize(400, 260)
         self._video.setStyleSheet(VIDEO_FEED_IDLE)
         layout.addWidget(self._video, 1)
@@ -567,11 +567,8 @@ class SafeWorkApp(QMainWindow):
         title_row = QHBoxLayout()
         sec_title = QLabel("Resumen ergonomico (Hoy)")
         sec_title.setStyleSheet("font-size: 14px; font-weight: 700; color: #1e293b;")
-        btn_dots = QPushButton("\uE712")
-        btn_dots.setStyleSheet("font-family: 'Segoe MDL2 Assets'; font-size: 14px; color: #64748b; background: transparent; border: none;")
         title_row.addWidget(sec_title)
         title_row.addStretch(1)
-        title_row.addWidget(btn_dots)
         layout.addLayout(title_row)
 
         sep = QFrame()
@@ -579,29 +576,37 @@ class SafeWorkApp(QMainWindow):
         sep.setStyleSheet("color: #e2e8f0; margin: 4px 0;")
         layout.addWidget(sep)
 
-        score_row = QHBoxLayout()
-        icon_score = QLabel("🏆")
-        icon_score.setStyleSheet("font-size: 36px; color: #0ea5a4;")
-        
+        score_panel = QFrame()
+        score_panel.setStyleSheet(
+            "QFrame { background: #f8fbff; border: 1px solid #dbeafe; border-radius: 8px; }"
+        )
+        score_row = QHBoxLayout(score_panel)
+        score_row.setContentsMargins(12, 10, 12, 10)
+        score_row.setSpacing(10)
+
+        icon_score = QLabel("\uE9D2")
+        icon_score.setFixedSize(34, 34)
+        icon_score.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon_score.setStyleSheet(
+            "font-family: 'Segoe MDL2 Assets'; font-size: 20px; color: #0f766e; "
+            "background: #ccfbf1; border-radius: 8px;"
+        )
         self._score_global = QLabel("100")
-        self._score_global.setStyleSheet("font-size: 42px; font-weight: 800; color: #0f766e;")
-        
+        self._score_global.setStyleSheet("font-size: 38px; font-weight: 800; color: #0f766e;")
         self._score_detalle = QLabel("Indice general\nOperacion optima")
         self._score_detalle.setStyleSheet("font-size: 13px; color: #475569;")
-        
+
         score_row.addWidget(icon_score)
-        score_row.addSpacing(10)
         score_row.addWidget(self._score_global)
         score_row.addWidget(self._score_detalle)
         score_row.addStretch(1)
-        
-        layout.addLayout(score_row)
+        layout.addWidget(score_panel)
 
         self._grafico_global = MiniTrendWidget()
-        self._grafico_global.setMinimumHeight(86)
+        self._grafico_global.setMinimumHeight(82)
         layout.addWidget(self._grafico_global)
 
-        self._incidencias_totales = self._crear_stat_row("Alertas", "--")
+        self._incidencias_totales = self._crear_stat_row("Alertas jornada", "--")
         self._incidencias_postura = self._crear_stat_row("Riesgo postural", "--")
         self._incidencias_pantalla = self._crear_stat_row("Distancia monitor", "--")
         self._incidencias_fatiga = self._crear_stat_row("Fatiga visual", "--")
@@ -610,6 +615,7 @@ class SafeWorkApp(QMainWindow):
         self._historial_mes = self._crear_stat_row("Ultimos 30 dias", "--")
 
         stats_layout = QVBoxLayout()
+        stats_layout.setSpacing(6)
         for row in (
             self._incidencias_totales,
             self._incidencias_postura,
@@ -624,34 +630,26 @@ class SafeWorkApp(QMainWindow):
 
         layout.addStretch(1)
 
-        btn_row = QHBoxLayout()
-        self._boton_exportar = QPushButton("Exportar PDF")
+        self._boton_exportar = QPushButton("\uE8A5  Exportar reporte")
         self._boton_exportar.setStyleSheet(
-            "QPushButton { background: #f8fafc; color: #334155; font-size: 12px; font-weight: 600; "
-            "border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px 14px; }"
-            "QPushButton:hover { background: #f1f5f9; }"
-        )
-        self._boton_exportar.clicked.connect(self._exportar_reporte)
-        
-        btn_full = QPushButton("Ver reporte")
-        btn_full.setStyleSheet(
-            "QPushButton { background: #1d4ed8; color: #ffffff; font-size: 12px; font-weight: 600; "
-            "border: none; border-radius: 6px; padding: 10px 14px; }"
+            "QPushButton { font-family: 'Segoe UI', 'Segoe MDL2 Assets'; background: #1d4ed8; color: #ffffff; "
+            "font-size: 12px; font-weight: 700; border: none; border-radius: 8px; padding: 11px 14px; }"
             "QPushButton:hover { background: #1e40af; }"
         )
-        btn_row.addWidget(self._boton_exportar)
-        btn_row.addWidget(btn_full)
-        layout.addLayout(btn_row)
+        self._boton_exportar.clicked.connect(self._exportar_reporte)
+        layout.addWidget(self._boton_exportar)
 
         return card
 
 
     @staticmethod
     def _crear_stat_row(etiqueta: str, valor: str) -> QWidget:
-        row = QWidget()
-        row.setStyleSheet("background: transparent;")
+        row = QFrame()
+        row.setStyleSheet(
+            "QFrame { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; }"
+        )
         layout = QHBoxLayout(row)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(10, 7, 10, 7)
         layout.setSpacing(6)
         lbl = QLabel(etiqueta)
         lbl.setStyleSheet(STAT_LABEL_STYLE)
@@ -663,7 +661,6 @@ class SafeWorkApp(QMainWindow):
         layout.addWidget(val)
         row._value_label = val
         return row
-
     def _configurar_bandeja(self) -> None:
         if not QSystemTrayIcon.isSystemTrayAvailable():
             return
@@ -777,8 +774,11 @@ class SafeWorkApp(QMainWindow):
         pixmap = QPixmap.fromImage(imagen)
         if pixmap.isNull():
             return
+        target = self._video.size()
+        if target.width() <= 0 or target.height() <= 0:
+            return
         escalado = pixmap.scaled(
-            self._video.size(),
+            target,
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
@@ -841,13 +841,11 @@ class SafeWorkApp(QMainWindow):
         if not isinstance(resumen, dict):
             return
 
-        total = int(resumen.get("total_incidencias", 0) or 0)
-        self._actualizar_stat(self._incidencias_totales, str(total))
-
         metricas = resumen.get("metricas_agregadas", {})
         periodos = metricas.get("periodos", {}) if isinstance(metricas, dict) else {}
         if not isinstance(periodos, dict):
             periodos = {}
+        self._actualizar_stat(self._incidencias_totales, str(int(periodos.get("hoy", 0) or 0)))
         self._actualizar_stat(self._historial_hoy, str(int(periodos.get("hoy", 0) or 0)))
         self._actualizar_stat(self._historial_semana, str(int(periodos.get("ultimos_7_dias", 0) or 0)))
         self._actualizar_stat(self._historial_mes, str(int(periodos.get("ultimos_30_dias", 0) or 0)))
@@ -1000,8 +998,9 @@ class SafeWorkApp(QMainWindow):
             if self._motor is not None:
                 self._motor.guardar_reporte_actual()
             reporte = self._exportador_reporte.exportar()
-            self.statusBar().showMessage(f"Reporte exportado: {reporte.html_path}", 10000)
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(reporte.html_path)))
+            carpeta = reporte.pdf_path.parent
+            self.statusBar().showMessage(f"Reportes PDF guardados en: {carpeta}", 15000)
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(reporte.pdf_path)))
         except Exception as exc:
             self.statusBar().showMessage(f"No se pudo exportar el reporte: {exc}", 10000)
 

@@ -4,5 +4,4 @@ from .pausa_activa_service import PausaActiva, PausaActivaService
 from .perfil_biometrico_service import PerfilBiometricoService
 from .reporte_analisis_service import ReporteAnalisisService
 from .reporte_export_service import ReporteExportado, ReporteExportService
-from .reporte_html_renderer import ReporteHtmlRenderer
 from .reporte_pdf_renderer import ReportePdfRenderer
