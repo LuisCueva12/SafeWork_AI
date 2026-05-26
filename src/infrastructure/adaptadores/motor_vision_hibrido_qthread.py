@@ -22,6 +22,7 @@ class MotorVisionIA(QThread):
     senal_nivel_riesgo = pyqtSignal(str)
     senal_bloqueo_requerido = pyqtSignal(str)
     senal_modo_operacion = pyqtSignal(str)
+    senal_error_ocurrido = pyqtSignal(str)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -54,15 +55,40 @@ class MotorVisionIA(QThread):
             pass
 
     def run(self) -> None:
-        self._captura.iniciar_captura()
+        try:
+            self._captura.iniciar_captura()
+        except Exception as e:
+            self.senal_error_ocurrido.emit(f"Error al inicializar la cámara: {str(e)}")
+            return
+
         try:
             self.senal_modo_operacion.emit(self._captura.resumen_runtime())
             self._emitir_resumen_incidencias()
+            
+            conteo_frames_vacios = 0
             while self._corriendo:
-                lectura = self._captura.capturar_lectura()
-                self._fusion_sensores.aplicar(lectura)
-                frame = self._captura.obtener_ultimo_frame()
-                resultado = self._monitor.procesar_lectura(lectura)
+                try:
+                    lectura = self._captura.capturar_lectura()
+                    self._fusion_sensores.aplicar(lectura)
+                    frame = self._captura.obtener_ultimo_frame()
+                except Exception as ex:
+                    self.senal_error_ocurrido.emit(f"Error de lectura o procesamiento: {str(ex)}")
+                    break
+
+                if frame is None:
+                    conteo_frames_vacios += 1
+                    if conteo_frames_vacios > 30: # Cerca de 3 segundos continuos sin imagen
+                        self.senal_error_ocurrido.emit("Cámara desconectada o sin señal de video.")
+                        break
+                else:
+                    conteo_frames_vacios = 0
+
+                try:
+                    resultado = self._monitor.procesar_lectura(lectura)
+                except Exception as ex:
+                    # Si falla el monitor, reportar el error en vez de colapsar la app
+                    self.senal_error_ocurrido.emit(f"Error interno en análisis postural: {str(ex)}")
+                    break
 
                 if resultado.mensaje_alerta:
                     self.senal_alerta_emitida.emit(resultado.mensaje_alerta)
@@ -72,16 +98,26 @@ class MotorVisionIA(QThread):
                 self.senal_detalle_estado.emit(resultado.detalle_estado)
                 self.senal_metricas.emit(resultado.resumen_metricas)
                 self.senal_nivel_riesgo.emit(resultado.estado_fisico.nivel_riesgo.value)
+                
                 if resultado.estado_fisico.requiere_bloqueo():
                     self.senal_bloqueo_requerido.emit(resultado.mensaje_alerta or resultado.mensaje_estado)
 
                 if frame is not None:
-                    frame_anotado = self._dibujar_overlay(frame, lectura, resultado.estado_fisico.estado)
-                    self._emitir_frame(frame_anotado)
+                    try:
+                        frame_anotado = self._dibujar_overlay(frame, lectura, resultado.estado_fisico.estado)
+                        self._emitir_frame(frame_anotado)
+                    except Exception:
+                        # Fallback en caso de que falle el dibujo en el frame, emitimos el frame original
+                        self._emitir_frame(frame)
 
                 self.msleep(self._settings.frame_interval_ms)
+        except Exception as e:
+            self.senal_error_ocurrido.emit(f"Fallo crítico en el motor de visión: {str(e)}")
         finally:
-            self._captura.detener_captura()
+            try:
+                self._captura.detener_captura()
+            except Exception:
+                pass
 
     def _emitir_resumen_incidencias(self) -> None:
         try:

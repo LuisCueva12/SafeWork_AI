@@ -27,11 +27,67 @@ class MemoriaUsuarioJsonAdapter:
         ):
             path.mkdir(parents=True, exist_ok=True)
 
-    def cargar_sesion_base(self) -> dict[str, float]:
+    @staticmethod
+    def _obfuscar(texto: str) -> str:
         try:
-            data = json.loads(self._profile_path.read_text(encoding="utf-8"))
+            import base64
+            key = 0x5A
+            encoded = bytearray(texto.encode("utf-8"))
+            for i in range(len(encoded)):
+                encoded[i] ^= key
+            return base64.b64encode(encoded).decode("utf-8")
         except Exception:
-            return {}
+            return texto
+
+    @staticmethod
+    def _desobfuscar(texto_obfuscado: str) -> str:
+        texto_limpio = texto_obfuscado.strip()
+        if not texto_limpio:
+            return ""
+        if texto_limpio.startswith(("{", "[")):
+            return texto_obfuscado
+        try:
+            import base64
+            key = 0x5A
+            decoded = base64.b64decode(texto_limpio.encode("utf-8"))
+            decoded_array = bytearray(decoded)
+            for i in range(len(decoded_array)):
+                decoded_array[i] ^= key
+            return decoded_array.decode("utf-8")
+        except Exception:
+            return texto_obfuscado
+
+    def _escribir_archivo_seguro(self, ruta: Path, datos: object) -> None:
+        try:
+            texto_json = json.dumps(datos, ensure_ascii=False, indent=2)
+            texto_obfuscado = self._obfuscar(texto_json)
+            ruta.write_text(texto_obfuscado, encoding="utf-8")
+        except Exception:
+            try:
+                ruta.write_text(json.dumps(datos, ensure_ascii=False, indent=2), encoding="utf-8")
+            except Exception:
+                pass
+
+    def _leer_archivo_seguro(self, ruta: Path) -> object | None:
+        if not ruta.exists():
+            return None
+        try:
+            contenido_original = ruta.read_text(encoding="utf-8")
+            contenido_desobfuscado = self._desobfuscar(contenido_original)
+            return json.loads(contenido_desobfuscado)
+        except Exception:
+            try:
+                ruta_corrupta = ruta.with_suffix(ruta.suffix + ".corrupted")
+                if ruta.exists():
+                    if ruta_corrupta.exists():
+                        ruta_corrupta.unlink()
+                    ruta.rename(ruta_corrupta)
+            except Exception:
+                pass
+            return None
+
+    def cargar_sesion_base(self) -> dict[str, float]:
+        data = self._leer_archivo_seguro(self._profile_path)
         if not isinstance(data, dict):
             return {}
         return {k: float(v) for k, v in data.items() if isinstance(v, (int, float))}
@@ -47,46 +103,31 @@ class MemoriaUsuarioJsonAdapter:
             "muestras_calibracion": float(sesion.muestras_calibracion),
             "updated_at": datetime.now().timestamp(),
         }
-        self._profile_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        self._escribir_archivo_seguro(self._profile_path, payload)
 
     def registrar_evento(self, evento: dict[str, object]) -> None:
         eventos = self._leer_eventos()
         eventos.append(evento)
         eventos = eventos[-300:]
-        self._events_path.write_text(json.dumps(eventos, ensure_ascii=False, indent=2), encoding="utf-8")
-        self._summary_path.write_text(
-            json.dumps(self._construir_resumen_incidencias(eventos), ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        self._escribir_archivo_seguro(self._events_path, eventos)
+        self._escribir_archivo_seguro(self._summary_path, self._construir_resumen_incidencias(eventos))
 
     def obtener_resumen_incidencias(self) -> dict[str, object]:
-        try:
-            resumen = json.loads(self._summary_path.read_text(encoding="utf-8"))
-            if isinstance(resumen, dict):
-                return resumen
-        except Exception:
-            pass
+        resumen = self._leer_archivo_seguro(self._summary_path)
+        if isinstance(resumen, dict):
+            return resumen
         eventos = self._leer_eventos()
         resumen = self._construir_resumen_incidencias(eventos)
-        try:
-            self._summary_path.write_text(json.dumps(resumen, ensure_ascii=False, indent=2), encoding="utf-8")
-        except Exception:
-            pass
+        self._escribir_archivo_seguro(self._summary_path, resumen)
         return resumen
 
     def guardar_reporte_sesion(self, reporte: dict[str, object]) -> None:
-        self._session_report_path.write_text(
-            json.dumps(reporte, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        self._escribir_archivo_seguro(self._session_report_path, reporte)
 
     def _leer_eventos(self) -> list[dict[str, object]]:
-        try:
-            eventos = json.loads(self._events_path.read_text(encoding="utf-8"))
-            if isinstance(eventos, list):
-                return [evento for evento in eventos if isinstance(evento, dict)]
-        except Exception:
-            pass
+        eventos = self._leer_archivo_seguro(self._events_path)
+        if isinstance(eventos, list):
+            return [evento for evento in eventos if isinstance(evento, dict)]
         return []
 
     def _construir_resumen_incidencias(self, eventos: list[dict[str, object]]) -> dict[str, object]:

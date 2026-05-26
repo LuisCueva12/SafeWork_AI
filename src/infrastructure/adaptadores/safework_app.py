@@ -70,6 +70,7 @@ class SafeWorkApp(QMainWindow):
             self.statusBar().showMessage(self._avisos_runtime[0], 12000)
 
         self._worker_voz = VozQThreadAdapter(self)
+        self._worker_voz.error_senal.connect(self._manejar_error_voz)
         self._worker_voz.start()
 
         self._motor = MotorVisionIA(parent=self)
@@ -82,7 +83,28 @@ class SafeWorkApp(QMainWindow):
         self._motor.senal_nivel_riesgo.connect(self._actualizar_nivel_riesgo)
         self._motor.senal_bloqueo_requerido.connect(self._manejar_bloqueo_critico)
         self._motor.senal_modo_operacion.connect(self._actualizar_modo_operacion)
+        self._motor.senal_error_ocurrido.connect(self._manejar_error_motor)
         self._motor.start()
+
+    def _manejar_error_motor(self, mensaje_error: str) -> None:
+        self._estado.setText("ERROR DE SENSOR")
+        self._estado.setStyleSheet(
+            "font-size: 16px; font-weight: 700; background: #0b1220;"
+            "padding: 8px 12px; border-radius: 8px; color: #ef4444;"
+        )
+        self._estado_aux.setText("Error en cámara o procesamiento de IA")
+        self._detalle.setText(mensaje_error)
+        self._video.setText(f"SISTEMA EN PAUSA\n\n{mensaje_error}\n\nPor favor, verifica la conexión de tu cámara.")
+        self._video.setStyleSheet(
+            "background-color: #020617; border: 2px solid #ef4444; border-radius: 6px; color: #fee2e2; font-size: 14px; font-weight: bold; qproperty-alignment: 'AlignCenter';"
+        )
+        self.statusBar().showMessage(f"Error detectado: {mensaje_error}", 15000)
+
+    def _manejar_error_voz(self, mensaje_error: str) -> None:
+        self._voz_habilitada = False
+        self._boton_voz.setText("Voz: No disponible")
+        self._boton_voz.setEnabled(False)
+        self.statusBar().showMessage(f"Asistente de voz inactivo: {mensaje_error}", 8000)
 
     def _construir_ui(self) -> None:
         self.setStyleSheet(
