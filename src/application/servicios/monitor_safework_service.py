@@ -30,10 +30,12 @@ class MonitorSafeWorkService:
         memoria_usuario: PuertoMemoriaUsuario | None = None,
         sensibilidad: str = "media",
         cooldown_alerta_segundos: int = 45,
+        contexto_operativo: dict[str, str] | None = None,
     ) -> None:
         self._sesion = SesionTrabajador()
         self._sesion.sensibilidad = sensibilidad
         self._sesion.cooldown_alerta_segundos = cooldown_alerta_segundos
+        self._sesion.contexto_operativo = contexto_operativo or {}
         self._memoria_usuario = memoria_usuario
         self._ultimo_estado_confirmado = EstadoAlerta.CALIBRANDO
         self._ultima_calidad_deteccion = 100.0
@@ -228,6 +230,7 @@ class MonitorSafeWorkService:
             "muestras_aprendizaje": self._sesion.muestras_aprendizaje,
             "indice_fatiga_actual": round(self._sesion.indice_fatiga, 3),
             "sensibilidad": self._sesion.sensibilidad,
+            "contexto_operativo": dict(self._sesion.contexto_operativo),
             "calidad_ultima_lectura": self._obtener_calidad_actual(),
             "niveles_riesgo_actuales": dict(self._sesion.niveles_riesgo_actuales),
             "incidentes_criticos": self._sesion.incidentes,

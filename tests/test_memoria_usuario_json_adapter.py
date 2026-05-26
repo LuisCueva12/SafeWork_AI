@@ -48,6 +48,9 @@ class MemoriaUsuarioJsonAdapterTest(unittest.TestCase):
             self.assertEqual(resumen["ultimas_incidencias"][0]["estado"], "CERCANIA AL MONITOR")
             self.assertEqual(resumen["ultimas_incidencias"][0]["nivel_riesgo"], "RIESGO_LEVE")
             self.assertIn("rostro_mas_grande", resumen["ultimas_incidencias"][0]["evidencias"])
+            self.assertEqual(resumen["metricas_agregadas"]["por_dia"]["2026-05-18"], 2)
+            self.assertEqual(resumen["metricas_agregadas"]["por_mes"]["2026-05"], 2)
+            self.assertEqual(resumen["metricas_agregadas"]["por_severidad"]["media"], 2)
 
 
 if __name__ == "__main__":

@@ -1,15 +1,17 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt, QUrl
-from PyQt6.QtGui import QDesktopServices, QPixmap
+from PyQt6.QtCore import QEvent, Qt, QUrl
+from PyQt6.QtGui import QAction, QCloseEvent, QDesktopServices, QIcon, QPixmap
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QMenu,
     QPushButton,
     QScrollArea,
     QStatusBar,
+    QSystemTrayIcon,
     QVBoxLayout,
     QWidget,
 )
@@ -32,14 +34,40 @@ class SafeWorkApp(QMainWindow):
         self._ultimo_estado_base = "CALIBRANDO"
         self._nivel_riesgo_actual = "OBSERVACION"
         self._settings = SafeWorkSettings.from_runtime()
+        self._errores_runtime, self._avisos_runtime = self._settings.validar_runtime()
         self._exportador_reporte = ReporteExportService(
             self._settings.profile_path,
             self._settings.events_path,
             self._settings.incidents_summary_path,
             self._settings.session_report_path,
+            validation_labels_path=self._settings.validation_labels_path,
         )
+        self._worker_voz = None
+        self._motor = None
+        self._tray_icon: QSystemTrayIcon | None = None
+        self._saliendo = False
 
         self._construir_ui()
+        self._configurar_bandeja()
+        self._arrancar_componentes()
+
+    def _arrancar_componentes(self) -> None:
+        if self._errores_runtime:
+            self._estado.setText("CONFIGURACION INCOMPLETA")
+            self._estado.setStyleSheet(
+                "font-size: 16px; font-weight: 700; background: #0b1220;"
+                "padding: 8px 12px; border-radius: 8px; color: #ef4444;"
+            )
+            self._estado_aux.setText("Faltan recursos obligatorios para iniciar el monitoreo")
+            self._detalle.setText(" | ".join(self._errores_runtime))
+            self._subtitulo.setText("No fue posible iniciar el motor de vision.")
+            self.statusBar().showMessage("Configuracion incompleta: revisa los modelos requeridos.")
+            self._boton_voz.setEnabled(False)
+            return
+
+        if self._avisos_runtime:
+            self._subtitulo.setText(" | ".join(self._avisos_runtime))
+            self.statusBar().showMessage(self._avisos_runtime[0], 12000)
 
         self._worker_voz = VozQThreadAdapter(self)
         self._worker_voz.start()
@@ -53,6 +81,7 @@ class SafeWorkApp(QMainWindow):
         self._motor.senal_resumen_incidencias.connect(self._actualizar_panel_incidencias)
         self._motor.senal_nivel_riesgo.connect(self._actualizar_nivel_riesgo)
         self._motor.senal_bloqueo_requerido.connect(self._manejar_bloqueo_critico)
+        self._motor.senal_modo_operacion.connect(self._actualizar_modo_operacion)
         self._motor.start()
 
     def _construir_ui(self) -> None:
@@ -227,10 +256,16 @@ class SafeWorkApp(QMainWindow):
         self._incidencias_postura = self._crear_linea_simple("Incidencias por postura: --")
         self._incidencias_pantalla = self._crear_linea_simple("Incidencias por cercania: --")
         self._incidencias_fatiga = self._crear_linea_simple("Incidencias por fatiga: --")
+        self._historial_hoy = self._crear_linea_simple("Hoy: --")
+        self._historial_semana = self._crear_linea_simple("Ultimos 7 dias: --")
+        self._historial_mes = self._crear_linea_simple("Ultimos 30 dias: --")
         incidencias_layout.addWidget(self._incidencias_totales)
         incidencias_layout.addWidget(self._incidencias_postura)
         incidencias_layout.addWidget(self._incidencias_pantalla)
         incidencias_layout.addWidget(self._incidencias_fatiga)
+        incidencias_layout.addWidget(self._historial_hoy)
+        incidencias_layout.addWidget(self._historial_semana)
+        incidencias_layout.addWidget(self._historial_mes)
 
         self._ultima_incidencia = QLabel("Aun no se registran incidencias.")
         self._ultima_incidencia.setWordWrap(True)
@@ -266,6 +301,31 @@ class SafeWorkApp(QMainWindow):
         barra = QStatusBar(self)
         barra.showMessage("SafeWork AI listo")
         self.setStatusBar(barra)
+
+    def _configurar_bandeja(self) -> None:
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            return
+
+        icon_path = self._settings.assets_dir / "safework_icon.ico"
+        icon = QIcon(str(icon_path)) if icon_path.exists() else self.windowIcon()
+        self.setWindowIcon(icon)
+
+        tray = QSystemTrayIcon(icon, self)
+        menu = QMenu(self)
+
+        restaurar = QAction("Restaurar", self)
+        restaurar.triggered.connect(self._restaurar_desde_bandeja)
+        menu.addAction(restaurar)
+
+        salir = QAction("Salir", self)
+        salir.triggered.connect(self._salir_desde_bandeja)
+        menu.addAction(salir)
+
+        tray.setContextMenu(menu)
+        tray.setToolTip("SafeWork AI")
+        tray.activated.connect(self._manejar_activacion_bandeja)
+        tray.show()
+        self._tray_icon = tray
 
     @staticmethod
     def _crear_card() -> QFrame:
@@ -323,6 +383,12 @@ class SafeWorkApp(QMainWindow):
         if detalle:
             self._detalle.setText(detalle)
 
+    def _actualizar_modo_operacion(self, mensaje: str) -> None:
+        if not mensaje:
+            return
+        self._subtitulo.setText(mensaje)
+        self.statusBar().showMessage(mensaje, 10000)
+
     def _actualizar_metricas(self, metricas: str) -> None:
         if metricas:
             self._aplicar_metricas_legibles(metricas)
@@ -363,6 +429,13 @@ class SafeWorkApp(QMainWindow):
         self._incidencias_postura.setText(f"Incidencias por postura: {int(por_categoria.get('ergonomia', 0) or 0)}")
         self._incidencias_pantalla.setText(f"Incidencias por cercania: {int(por_categoria.get('proximidad', 0) or 0)}")
         self._incidencias_fatiga.setText(f"Incidencias por fatiga: {int(por_categoria.get('somnolencia', 0) or 0)}")
+        metricas = resumen.get("metricas_agregadas", {})
+        periodos = metricas.get("periodos", {}) if isinstance(metricas, dict) else {}
+        if not isinstance(periodos, dict):
+            periodos = {}
+        self._historial_hoy.setText(f"Hoy: {int(periodos.get('hoy', 0) or 0)}")
+        self._historial_semana.setText(f"Ultimos 7 dias: {int(periodos.get('ultimos_7_dias', 0) or 0)}")
+        self._historial_mes.setText(f"Ultimos 30 dias: {int(periodos.get('ultimos_30_dias', 0) or 0)}")
 
         ultimas = resumen.get("ultimas_incidencias", [])
         if isinstance(ultimas, list) and ultimas:
@@ -439,32 +512,83 @@ class SafeWorkApp(QMainWindow):
         if mensaje == self._ultimo_mensaje_voz:
             return
         self._ultimo_mensaje_voz = mensaje
-        self._worker_voz.emitir_mensaje(mensaje)
+        if self._worker_voz is not None:
+            self._worker_voz.emitir_mensaje(mensaje)
 
     def _alternar_voz(self) -> None:
+        if self._worker_voz is None:
+            return
         self._voz_habilitada = not self._voz_habilitada
         self._boton_voz.setText("Voz: Activa" if self._voz_habilitada else "Voz: Silenciada")
 
     def _exportar_reporte(self) -> None:
         try:
-            self._motor.guardar_reporte_actual()
+            if self._motor is not None:
+                self._motor.guardar_reporte_actual()
             reporte = self._exportador_reporte.exportar()
             self.statusBar().showMessage(f"Reporte exportado: {reporte.html_path}", 10000)
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(reporte.html_path)))
         except Exception as exc:
             self.statusBar().showMessage(f"No se pudo exportar el reporte: {exc}", 10000)
 
-    def closeEvent(self, event) -> None: 
+    def _manejar_activacion_bandeja(self, motivo: QSystemTrayIcon.ActivationReason) -> None:
+        if motivo in {
+            QSystemTrayIcon.ActivationReason.Trigger,
+            QSystemTrayIcon.ActivationReason.DoubleClick,
+        }:
+            self._restaurar_desde_bandeja()
+
+    def _restaurar_desde_bandeja(self) -> None:
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def _salir_desde_bandeja(self) -> None:
+        self._saliendo = True
+        self.close()
+
+    def changeEvent(self, event: QEvent) -> None:
+        if (
+            event.type() == QEvent.Type.WindowStateChange
+            and self.isMinimized()
+            and self._tray_icon is not None
+            and self._tray_icon.isVisible()
+        ):
+            self.hide()
+            self._tray_icon.showMessage(
+                "SafeWork AI",
+                "La aplicacion fue minimizada a la bandeja del sistema.",
+                QSystemTrayIcon.MessageIcon.Information,
+                2500,
+            )
+        super().changeEvent(event)
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        if self._tray_icon is not None and self._tray_icon.isVisible() and not self._saliendo:
+            self.hide()
+            self._tray_icon.showMessage(
+                "SafeWork AI",
+                "La aplicacion sigue activa en la bandeja del sistema.",
+                QSystemTrayIcon.MessageIcon.Information,
+                3500,
+            )
+            event.ignore()
+            return
         try:
-            self._motor.guardar_reporte_actual()
+            if self._motor is not None:
+                self._motor.guardar_reporte_actual()
         except Exception:
             pass
         try:
-            self._motor.detener()
+            if self._motor is not None:
+                self._motor.detener()
         except Exception:
             pass
         try:
-            self._worker_voz.detener()
+            if self._worker_voz is not None:
+                self._worker_voz.detener()
         except Exception:
             pass
+        if self._tray_icon is not None:
+            self._tray_icon.hide()
         super().closeEvent(event)

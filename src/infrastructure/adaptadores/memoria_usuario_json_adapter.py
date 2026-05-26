@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from ...domain.entities.trabajador import SesionTrabajador
@@ -119,6 +119,66 @@ class MemoriaUsuarioJsonAdapter:
             "total_incidencias": len(eventos),
             "por_estado": conteos,
             "por_categoria": categoria_conteos,
+            "metricas_agregadas": self._construir_metricas_agregadas(eventos),
             "ultimas_incidencias": recientes,
             "updated_at": datetime.now().isoformat(),
         }
+
+    def _construir_metricas_agregadas(self, eventos: list[dict[str, object]]) -> dict[str, object]:
+        ahora = datetime.now()
+        hace_7_dias = ahora - timedelta(days=7)
+        hace_30_dias = ahora - timedelta(days=30)
+        por_dia: dict[str, int] = {}
+        por_semana: dict[str, int] = {}
+        por_mes: dict[str, int] = {}
+        por_severidad: dict[str, int] = {}
+        calidades: list[float] = []
+        hoy = 0
+        ultimos_7_dias = 0
+        ultimos_30_dias = 0
+
+        for evento in eventos:
+            fecha = self._parsear_fecha_evento(evento.get("timestamp"))
+            if fecha is not None:
+                dia = fecha.date().isoformat()
+                semana = f"{fecha.isocalendar().year}-W{fecha.isocalendar().week:02d}"
+                mes = f"{fecha.year:04d}-{fecha.month:02d}"
+                por_dia[dia] = por_dia.get(dia, 0) + 1
+                por_semana[semana] = por_semana.get(semana, 0) + 1
+                por_mes[mes] = por_mes.get(mes, 0) + 1
+                if fecha.date() == ahora.date():
+                    hoy += 1
+                if fecha >= hace_7_dias:
+                    ultimos_7_dias += 1
+                if fecha >= hace_30_dias:
+                    ultimos_30_dias += 1
+
+            severidad = str(evento.get("severidad", "informativa"))
+            por_severidad[severidad] = por_severidad.get(severidad, 0) + 1
+            try:
+                calidades.append(float(evento.get("calidad_deteccion", 0)))
+            except (TypeError, ValueError):
+                pass
+
+        promedio_calidad = round(sum(calidades) / len(calidades), 2) if calidades else None
+        return {
+            "periodos": {
+                "hoy": hoy,
+                "ultimos_7_dias": ultimos_7_dias,
+                "ultimos_30_dias": ultimos_30_dias,
+            },
+            "por_dia": dict(sorted(por_dia.items())[-30:]),
+            "por_semana": dict(sorted(por_semana.items())[-12:]),
+            "por_mes": dict(sorted(por_mes.items())[-12:]),
+            "por_severidad": por_severidad,
+            "calidad_promedio": promedio_calidad,
+        }
+
+    @staticmethod
+    def _parsear_fecha_evento(valor: object) -> datetime | None:
+        if not isinstance(valor, str) or not valor:
+            return None
+        try:
+            return datetime.fromisoformat(valor)
+        except ValueError:
+            return None

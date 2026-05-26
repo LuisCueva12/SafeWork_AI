@@ -38,6 +38,8 @@ class CapturaHibridaAdapter(PuertoCapturaCorporal):
         self._contador_frames = 0
         self._ultima_clase_yolo = "normal"
         self._ultima_confianza_yolo = 0.0
+        self._modo_degradado = False
+        self._avisos_runtime: list[str] = []
         self._configurar_ultralytics()
         self._inicializar_modelos()
 
@@ -108,6 +110,14 @@ class CapturaHibridaAdapter(PuertoCapturaCorporal):
     def esta_activo(self) -> bool:
         return self._captura_video is not None and self._captura_video.isOpened()
 
+    def resumen_runtime(self) -> str:
+        if not self._avisos_runtime:
+            return "Motor hibrido listo: MediaPipe y YOLO disponibles."
+        return " | ".join(self._avisos_runtime)
+
+    def modo_degradado(self) -> bool:
+        return self._modo_degradado
+
     def _configurar_ultralytics(self) -> None:
         os.environ["YOLO_CONFIG_DIR"] = str(self._settings.yolo_config_dir)
         try:
@@ -130,11 +140,28 @@ class CapturaHibridaAdapter(PuertoCapturaCorporal):
         )
         self._pose_landmarker = mp_vision.PoseLandmarker.create_from_options(pose_opts)
 
-        if YOLO is not None and self._settings.yolo_model_path.exists():
-            try:
-                self._modelo_yolo = YOLO(str(self._settings.yolo_model_path), task="classify")
-            except Exception:
-                self._modelo_yolo = None
+        if YOLO is None:
+            self._modo_degradado = True
+            self._avisos_runtime.append(
+                "Ultralytics no esta disponible. Se mantiene el monitoreo con MediaPipe."
+            )
+            return
+
+        if not self._settings.yolo_model_path.exists():
+            self._modo_degradado = True
+            self._avisos_runtime.append(
+                "No se encontro el modelo YOLO de somnolencia. Se mantiene el monitoreo con MediaPipe."
+            )
+            return
+
+        try:
+            self._modelo_yolo = YOLO(str(self._settings.yolo_model_path), task="classify")
+        except Exception:
+            self._modelo_yolo = None
+            self._modo_degradado = True
+            self._avisos_runtime.append(
+                "No se pudo cargar el modelo YOLO de somnolencia. Se mantiene el monitoreo con MediaPipe."
+            )
 
     def _nuevo_timestamp(self) -> int:
         import time

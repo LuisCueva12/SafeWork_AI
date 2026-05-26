@@ -62,6 +62,7 @@ class SesionTrabajador:
     ultimo_riesgo_observado: datetime | None = None
     sensibilidad: str = "media"
     cooldown_alerta_segundos: int = COOLDOWN_ALERTA_SEGUNDOS
+    contexto_operativo: dict[str, str] = field(default_factory=dict)
  
     def en_cooldown(self) -> bool:
         if self.ultimo_tiempo_alerta is None:

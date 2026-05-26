@@ -412,6 +412,7 @@ class MonitorSafeWorkServiceTest(unittest.TestCase):
             min_muestras_calibracion=0,
             max_duracion_calibracion_segundos=0.0,
             memoria_usuario=memoria,
+            contexto_operativo={"empresa": "Softech Peru", "puesto": "oficina"},
         )
 
         lectura = construir_lectura(mar=0.45, yolo_clase="yawn", yolo_confianza=0.82)
@@ -426,6 +427,7 @@ class MonitorSafeWorkServiceTest(unittest.TestCase):
         self.assertTrue(memoria.reportes)
         self.assertIn("perfil_base", memoria.reportes[-1])
         self.assertIn("incidentes_criticos", memoria.reportes[-1])
+        self.assertEqual(memoria.reportes[-1]["contexto_operativo"]["empresa"], "Softech Peru")
 
     def test_registra_incidente_al_escalar_de_leve_a_critico(self) -> None:
         memoria = MemoriaFalsa()

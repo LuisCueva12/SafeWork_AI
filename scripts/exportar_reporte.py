@@ -18,10 +18,12 @@ def main() -> None:
         settings.events_path,
         settings.incidents_summary_path,
         settings.session_report_path,
+        validation_labels_path=settings.validation_labels_path,
     )
     reporte = exportador.exportar()
     print(f"Reporte HTML: {reporte.html_path}")
     print(f"Reporte JSON: {reporte.json_path}")
+    print(f"Reporte PDF: {reporte.pdf_path}")
 
 
 if __name__ == "__main__":

@@ -5,9 +5,8 @@ import numpy as np
 from PyQt6.QtCore import QThread, pyqtSignal
 from PyQt6.QtGui import QImage
 
-from ...application.servicios import MonitorSafeWorkService
+from ...application.servicios import FusionSensoresService, MonitorSafeWorkService
 from ...domain.entities.postura import EstadoAlerta, LecturaHibrida, NivelRiesgo
-from ...domain.reglas.normalizacion_yolo import es_clase_bostezo, es_clase_fatiga, normalizar_clase_yolo
 from ..config import SafeWorkSettings
 from .captura_hibrida_adapter import CapturaHibridaAdapter
 from .memoria_usuario_json_adapter import MemoriaUsuarioJsonAdapter
@@ -22,6 +21,7 @@ class MotorVisionIA(QThread):
     senal_resumen_incidencias = pyqtSignal(object)
     senal_nivel_riesgo = pyqtSignal(str)
     senal_bloqueo_requerido = pyqtSignal(str)
+    senal_modo_operacion = pyqtSignal(str)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -38,7 +38,9 @@ class MotorVisionIA(QThread):
             memoria_usuario=self._memoria_usuario,
             sensibilidad=self._settings.sensitivity,
             cooldown_alerta_segundos=self._settings.alert_cooldown_seconds,
+            contexto_operativo=self._settings.contexto_operativo(),
         )
+        self._fusion_sensores = FusionSensoresService()
         self._corriendo = True
 
     def detener(self) -> None:
@@ -54,10 +56,11 @@ class MotorVisionIA(QThread):
     def run(self) -> None:
         self._captura.iniciar_captura()
         try:
+            self.senal_modo_operacion.emit(self._captura.resumen_runtime())
             self._emitir_resumen_incidencias()
             while self._corriendo:
                 lectura = self._captura.capturar_lectura()
-                self._aplicar_fusion_sensores(lectura)
+                self._fusion_sensores.aplicar(lectura)
                 frame = self._captura.obtener_ultimo_frame()
                 resultado = self._monitor.procesar_lectura(lectura)
 
@@ -89,34 +92,7 @@ class MotorVisionIA(QThread):
 
     @staticmethod
     def _aplicar_fusion_sensores(lectura: LecturaHibrida | None) -> None:
-        if lectura is None:
-            return
-
-        clase = normalizar_clase_yolo(lectura.yolo_clase)
-        es_bostezo = es_clase_bostezo(clase)
-        es_fatiga = es_clase_fatiga(clase)
-        if not (es_bostezo or es_fatiga):
-            lectura.fusion_nivel = None
-            lectura.fusion_motivo = ""
-            return
-
-        heuristica_bostezo = lectura.mar >= 0.38
-        heuristica_fatiga = lectura.ear > 0 and lectura.ear <= 0.18
-
-        if lectura.yolo_confianza < 0.70:
-            lectura.fusion_nivel = NivelRiesgo.OBSERVACION
-            lectura.fusion_motivo = "YOLO con confianza baja"
-            return
-
-        confirma_bostezo = es_bostezo and heuristica_bostezo
-        confirma_fatiga = es_fatiga and heuristica_fatiga
-        if lectura.yolo_confianza > 0.75 and (confirma_bostezo or confirma_fatiga):
-            lectura.fusion_nivel = NivelRiesgo.RIESGO_CONFIRMADO
-            lectura.fusion_motivo = "YOLO y MediaPipe coinciden"
-            return
-
-        lectura.fusion_nivel = NivelRiesgo.OBSERVACION
-        lectura.fusion_motivo = "YOLO sin redundancia suficiente"
+        FusionSensoresService().aplicar(lectura)
 
     def _emitir_frame(self, frame_bgr: np.ndarray) -> None:
         frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)

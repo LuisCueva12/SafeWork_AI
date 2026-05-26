@@ -16,6 +16,7 @@ class ReporteExportServiceTest(unittest.TestCase):
             events = root / "event_history.json"
             summary = root / "incident_summary.json"
             session = root / "session_report.json"
+            labels = root / "validation_labels.json"
             output = root / "exports"
 
             profile.write_text(json.dumps({"base_ear": 0.31}), encoding="utf-8")
@@ -35,7 +36,34 @@ class ReporteExportServiceTest(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            summary.write_text(json.dumps({"total_incidencias": 1}), encoding="utf-8")
+            labels.write_text(
+                json.dumps(
+                    [
+                        {
+                            "incident_id": "cercania-1",
+                            "resultado": "correcto",
+                            "observacion": "Incidencia validada por supervisor.",
+                        }
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            summary.write_text(
+                json.dumps(
+                    {
+                        "total_incidencias": 1,
+                        "metricas_agregadas": {
+                            "periodos": {"hoy": 1, "ultimos_7_dias": 1, "ultimos_30_dias": 1},
+                            "por_dia": {"2026-05-18": 1},
+                            "por_semana": {"2026-W21": 1},
+                            "por_mes": {"2026-05": 1},
+                            "por_severidad": {"leve": 1},
+                            "calidad_promedio": 96,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
             session.write_text(
                 json.dumps(
                     {
@@ -46,25 +74,42 @@ class ReporteExportServiceTest(unittest.TestCase):
                         "duracion_sesion_segundos": 240,
                         "sensibilidad": "normal",
                         "muestras_aprendizaje": 60,
+                        "contexto_operativo": {
+                            "empresa": "Softech Peru",
+                            "trabajador": "demo",
+                            "puesto": "oficina",
+                            "perfil_riesgo": "estandar",
+                            "camara": "webcam_integrada",
+                            "iluminacion": "media",
+                        },
                     }
                 ),
                 encoding="utf-8",
             )
 
-            exportador = ReporteExportService(profile, events, summary, session, output)
+            exportador = ReporteExportService(profile, events, summary, session, output, validation_labels_path=labels)
             reporte = exportador.exportar()
 
             self.assertTrue(reporte.html_path.exists())
             self.assertTrue(reporte.json_path.exists())
+            self.assertIsNotNone(reporte.pdf_path)
+            self.assertTrue(reporte.pdf_path.exists())
             html = reporte.html_path.read_text(encoding="utf-8")
             data = json.loads(reporte.json_path.read_text(encoding="utf-8"))
             self.assertIn("Reporte SafeWork AI", html)
             self.assertIn("Analisis de calidad de datos", html)
-            self.assertIn("rostro_mas_grande", html)
+            self.assertIn("Contexto de validacion", html)
+            self.assertIn("Historico agregado", html)
+            self.assertIn("Validacion del modelo", html)
+            self.assertIn("Rostro Mas Grande", html)
+            self.assertIn("Puntaje de datos", html)
+            self.assertIn("Muestras revisadas", html)
             self.assertEqual(data["resumen_incidencias"]["total_incidencias"], 1)
             self.assertIn("analisis_calidad_datos", data)
             self.assertGreaterEqual(data["analisis_calidad_datos"]["puntaje_calidad_datos"], 85)
             self.assertEqual(data["analisis_calidad_datos"]["estado_sistema"], "CONFIABILIDAD ALTA")
+            self.assertEqual(data["validacion_modelo"]["verdaderos_positivos"], 1)
+            self.assertEqual(data["validacion_modelo"]["falsos_positivos"], 0)
 
     def test_analisis_reconoce_sesion_sin_incidencias_como_valida(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

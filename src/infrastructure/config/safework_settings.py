@@ -24,9 +24,16 @@ class SafeWorkSettings:
     events_path: Path
     incidents_summary_path: Path
     session_report_path: Path
+    validation_labels_path: Path
     yolo_model_path: Path
     face_model_path: Path
     pose_model_path: Path
+    company_name: str
+    worker_id: str
+    position_profile: str
+    risk_profile: str
+    camera_profile: str
+    lighting_profile: str
 
     @classmethod
     def from_runtime(cls) -> "SafeWorkSettings":
@@ -58,10 +65,43 @@ class SafeWorkSettings:
             events_path=app_data_dir / "event_history.json",
             incidents_summary_path=app_data_dir / "incident_summary.json",
             session_report_path=app_data_dir / "session_report.json",
+            validation_labels_path=app_data_dir / "validation_labels.json",
             yolo_model_path=assets_dir / "yolov8n-drowsiness.onnx",
             face_model_path=assets_dir / "face_landmarker.task",
             pose_model_path=assets_dir / "pose_landmarker_lite.task",
+            company_name=os.getenv("SAFEWORK_COMPANY_NAME", "Softech Peru").strip() or "Softech Peru",
+            worker_id=os.getenv("SAFEWORK_WORKER_ID", "usuario_local").strip() or "usuario_local",
+            position_profile=os.getenv("SAFEWORK_POSITION_PROFILE", "oficina").strip().lower() or "oficina",
+            risk_profile=os.getenv("SAFEWORK_RISK_PROFILE", "estandar").strip().lower() or "estandar",
+            camera_profile=os.getenv("SAFEWORK_CAMERA_PROFILE", "webcam_integrada").strip().lower() or "webcam_integrada",
+            lighting_profile=os.getenv("SAFEWORK_LIGHTING_PROFILE", "no_especificada").strip().lower() or "no_especificada",
         )
+
+    def contexto_operativo(self) -> dict[str, str]:
+        return {
+            "empresa": self.company_name,
+            "trabajador": self.worker_id,
+            "puesto": self.position_profile,
+            "perfil_riesgo": self.risk_profile,
+            "camara": self.camera_profile,
+            "iluminacion": self.lighting_profile,
+        }
+
+    def validar_runtime(self) -> tuple[list[str], list[str]]:
+        errores: list[str] = []
+        avisos: list[str] = []
+
+        if not self.face_model_path.exists():
+            errores.append(f"No se encontro el modelo facial: {self.face_model_path.name}")
+        if not self.pose_model_path.exists():
+            errores.append(f"No se encontro el modelo corporal: {self.pose_model_path.name}")
+        if not self.yolo_model_path.exists():
+            avisos.append(
+                "No se encontro el modelo YOLO de somnolencia. "
+                "El monitoreo seguira activo en modo degradado con MediaPipe."
+            )
+
+        return errores, avisos
 
     @staticmethod
     def _resolver_project_root() -> Path:
