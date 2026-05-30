@@ -51,11 +51,11 @@ class SafeWorkSettings:
 
         return cls(
             calibration_seconds=5.0,
-            frame_interval_ms=33,
+            frame_interval_ms=66,        
             capture_index=0,
             frame_width=640,
             frame_height=480,
-            yolo_inference_stride=5,
+            yolo_inference_stride=8,     
             yolo_confidence_threshold=0.55,
             sensitivity=os.getenv("SAFEWORK_SENSITIVITY", "media").strip().lower() or "media",
             alert_cooldown_seconds=cls._leer_entero_env("SAFEWORK_ALERT_COOLDOWN_SECONDS", 45),

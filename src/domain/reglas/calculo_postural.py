@@ -7,15 +7,16 @@ from .normalizacion_yolo import es_clase_bostezo, es_clase_fatiga, es_clase_suen
 
 UMBRAL_EAR_CERRADO = 0.18
 UMBRAL_MAR_BOSTEZO = 0.38
-UMBRAL_INCLINACION_LATERAL = 7.5
+UMBRAL_INCLINACION_LATERAL = 15.0
 UMBRAL_POSTURA_SOSTENIDA_SEGUNDOS = 2.5
 UMBRAL_CERCANIA_MONITOR = 0.72
 RIESGO_OBSERVACION_SEGUNDOS = 3.0
 RIESGO_LEVE_SEGUNDOS = 10.0
 RIESGO_CRITICO_SEGUNDOS = 20.0
 CALIDAD_MINIMA_LECTURA = 55.0
-RACHA_CERCANIA_CONFIRMADA = 12
-RACHA_POSTURA_CONFIRMADA = 45
+RACHA_CERCANIA_CONFIRMADA = 6
+RACHA_POSTURA_CONFIRMADA = 22
+UMBRAL_CABECEO_TIEMPO_SEGUNDOS = 2.5
 
 
 def _existe_oclusion_consciente(
@@ -181,8 +182,7 @@ def calcular_ratio_postural(lectura: LecturaHibrida) -> tuple[float, float]:
         return 0.0, 0.0
     dx = lectura.hombro_derecho.x - lectura.hombro_izquierdo.x
     dy = lectura.hombro_derecho.y - lectura.hombro_izquierdo.y
-    dz = lectura.hombro_derecho.z - lectura.hombro_izquierdo.z
-    ancho_hombros = math.sqrt(dx**2 + dy**2 + dz**2)
+    ancho_hombros = math.sqrt(dx**2 + dy**2)
     if ancho_hombros <= 0:
         return 0.0, 0.0
     hombro_medio_y = (lectura.hombro_izquierdo.y + lectura.hombro_derecho.y) / 2.0
@@ -205,9 +205,6 @@ def calcular_postura(lectura: LecturaHibrida, sesion: SesionTrabajador) -> tuple
         lateral = abs(angulo_orejas - angulo_hombros)
         if lateral > 90:
             lateral = 180 - lateral
-        centro_hombros_x = (lectura.hombro_izquierdo.x + lectura.hombro_derecho.x) / 2.0
-        desviacion_nariz = abs(lectura.nariz.x - centro_hombros_x)
-        lateral = max(lateral, desviacion_nariz * 90.0)
     return cuello, lateral
 
 def calcular_proximidad_monitor(lectura: LecturaHibrida, sesion: SesionTrabajador) -> float:
@@ -252,19 +249,6 @@ def analizar_lectura_hibrida(lectura: LecturaHibrida, sesion: SesionTrabajador) 
         )
 
     calidad_deteccion, evidencias = evaluar_calidad_lectura(lectura)
-    if "encuadre_incompleto" in evidencias:
-        return EstadoFisico(
-            lectura.ear,
-            lectura.mar,
-            0.0,
-            0.0,
-            0.0,
-            EstadoAlerta.LECTURA_INESTABLE,
-            calidad_deteccion=calidad_deteccion,
-            puntajes_riesgo={"calidad": int(round(calidad_deteccion)), "cercania": 0, "postura": 0, "fatiga": 0},
-            evidencias=tuple(evidencias),
-            accion_recomendada=_accion_recomendada(EstadoAlerta.LECTURA_INESTABLE),
-        )
 
     if not lectura.rostro_detectado:
         return EstadoFisico(
@@ -298,26 +282,25 @@ def analizar_lectura_hibrida(lectura: LecturaHibrida, sesion: SesionTrabajador) 
     clase = clase_original
     observacion_yolo_baja_confianza = (
         es_clase_sueno_o_bostezo(clase_original)
-        and lectura.yolo_confianza < 0.70
+        and lectura.yolo_confianza < 0.85
         and lectura.fusion_nivel != NivelRiesgo.RIESGO_CONFIRMADO
     )
     if observacion_yolo_baja_confianza:
         clase = "normal"
     
-    alpha = 0.30
-    raw_ear = lectura.ear if lectura.rostro_detectado else 0.0
-    raw_mar = lectura.mar if lectura.rostro_detectado else 0.0
-    
-    if sesion.ultimo_ear_filtrado == 0.0:
-        sesion.ultimo_ear_filtrado = raw_ear
-    else:
-        sesion.ultimo_ear_filtrado = alpha * raw_ear + (1.0 - alpha) * sesion.ultimo_ear_filtrado
-        
-    if sesion.ultimo_mar_filtrado == 0.0:
-        sesion.ultimo_mar_filtrado = raw_mar
-    else:
-        sesion.ultimo_mar_filtrado = alpha * raw_mar + (1.0 - alpha) * sesion.ultimo_mar_filtrado
-    if lectura.rostro_detectado:
+    alpha = 0.65
+
+    if lectura.rostro_detectado and lectura.ear > 0:
+        if sesion.ultimo_ear_filtrado == 0.0:
+            sesion.ultimo_ear_filtrado = lectura.ear
+        else:
+            sesion.ultimo_ear_filtrado = alpha * lectura.ear + (1.0 - alpha) * sesion.ultimo_ear_filtrado
+
+    if lectura.rostro_detectado and lectura.mar > 0:
+        if sesion.ultimo_mar_filtrado == 0.0:
+            sesion.ultimo_mar_filtrado = lectura.mar
+        else:
+            sesion.ultimo_mar_filtrado = alpha * lectura.mar + (1.0 - alpha) * sesion.ultimo_mar_filtrado
         sesion.registrar_mar_lectura(sesion.ultimo_mar_filtrado)
 
     factor_sensibilidad = sesion.factor_sensibilidad()
@@ -371,15 +354,24 @@ def analizar_lectura_hibrida(lectura: LecturaHibrida, sesion: SesionTrabajador) 
             sesion.racha_boca_abierta = 0
             sesion.finalizar_bostezo()
         elif sesion.ultimo_mar_filtrado >= umbral_mar:
-            evidencias.append("apertura_boca_elevada")
-            sesion.racha_boca_abierta = min(120, sesion.racha_boca_abierta + 1)
-            if sesion.inicio_bostezo_actual is None:
-                sesion.inicio_bostezo_actual = time.time()
-                sesion.bostezo_actual_activo = True
-            sesion.indice_fatiga = min(2.5, sesion.indice_fatiga + 0.06)
-            if sesion.racha_boca_abierta >= 4:
-                if sesion.confirmar_bostezo():
-                    evidencias.append("bostezo_por_apertura_sostenida")
+            ojos_bien_abiertos = sesion.ultimo_ear_filtrado > (umbral_ear * 1.25)
+            
+            if ojos_bien_abiertos:
+                sesion.racha_boca_abierta = max(0, sesion.racha_boca_abierta - 1)
+                if sesion.bostezo_actual_activo:
+                    sesion.inicio_bostezo_actual = None
+                    sesion.bostezo_actual_activo = False
+                    sesion.finalizar_bostezo()
+            else:
+                evidencias.append("apertura_boca_elevada")
+                sesion.racha_boca_abierta = min(120, sesion.racha_boca_abierta + 1)
+                if sesion.inicio_bostezo_actual is None:
+                    sesion.inicio_bostezo_actual = time.time()
+                    sesion.bostezo_actual_activo = True
+                sesion.indice_fatiga = min(2.5, sesion.indice_fatiga + 0.06)
+                if sesion.racha_boca_abierta >= 30:
+                    if sesion.confirmar_bostezo():
+                        evidencias.append("bostezo_por_apertura_sostenida")
         else:
             sesion.racha_boca_abierta = max(0, sesion.racha_boca_abierta - 2)
             if sesion.bostezo_actual_activo and sesion.inicio_bostezo_actual is not None:
@@ -404,16 +396,19 @@ def analizar_lectura_hibrida(lectura: LecturaHibrida, sesion: SesionTrabajador) 
 
     angulo_cuello_raw, angulo_lateral_raw = calcular_postura(lectura, sesion)
     proximidad_monitor = calcular_proximidad_monitor(lectura, sesion)
-    if sesion.ultimo_cuello_filtrado == 0.0:
-        sesion.ultimo_cuello_filtrado = angulo_cuello_raw
-    else:
-        sesion.ultimo_cuello_filtrado = alpha * angulo_cuello_raw + (1.0 - alpha) * sesion.ultimo_cuello_filtrado
-        
-    if sesion.ultimo_lateral_filtrado == 0.0:
-        sesion.ultimo_lateral_filtrado = angulo_lateral_raw
-    else:
-        sesion.ultimo_lateral_filtrado = alpha * angulo_lateral_raw + (1.0 - alpha) * sesion.ultimo_lateral_filtrado
-        
+
+    if lectura.cuerpo_detectado and angulo_cuello_raw > 0:
+        if sesion.ultimo_cuello_filtrado == 0.0:
+            sesion.ultimo_cuello_filtrado = angulo_cuello_raw
+        else:
+            sesion.ultimo_cuello_filtrado = alpha * angulo_cuello_raw + (1.0 - alpha) * sesion.ultimo_cuello_filtrado
+
+    if lectura.cuerpo_detectado and angulo_lateral_raw > 0:
+        if sesion.ultimo_lateral_filtrado == 0.0:
+            sesion.ultimo_lateral_filtrado = angulo_lateral_raw
+        else:
+            sesion.ultimo_lateral_filtrado = alpha * angulo_lateral_raw + (1.0 - alpha) * sesion.ultimo_lateral_filtrado
+
     angulo_cuello = sesion.ultimo_cuello_filtrado
     angulo_lateral = sesion.ultimo_lateral_filtrado
 
@@ -484,7 +479,7 @@ def analizar_lectura_hibrida(lectura: LecturaHibrida, sesion: SesionTrabajador) 
         sesion.racha_cabeceo_riesgo += 1
         sesion.registrar_cabeceo_iniciado()
     else:
-        sesion.racha_cabeceo_riesgo = max(0, sesion.racha_cabeceo_riesgo - 1)
+        sesion.racha_cabeceo_riesgo = max(0, sesion.racha_cabeceo_riesgo - 2)
         sesion.registrar_cabeza_erguida()
         if angulo_cuello >= umbral_cuello_cabeceo and not calidad_cabeceo_suficiente:
             evidencias.append("lectura_no_apta_para_cabeceo")
@@ -506,7 +501,7 @@ def analizar_lectura_hibrida(lectura: LecturaHibrida, sesion: SesionTrabajador) 
         sesion.racha_postura_riesgo += 1
         sesion.registrar_mala_postura()
     else:
-        sesion.racha_postura_riesgo = max(0, sesion.racha_postura_riesgo - 1)
+        sesion.racha_postura_riesgo = max(0, sesion.racha_postura_riesgo - 2)
         sesion.registrar_buena_postura()
 
     riesgo_cercania = (
@@ -539,7 +534,7 @@ def analizar_lectura_hibrida(lectura: LecturaHibrida, sesion: SesionTrabajador) 
     ):
         estado = EstadoAlerta.FATIGA_EXTREMA
         duracion_riesgo = max(sesion.segundos_ojos_cerrados(), UMBRAL_OJOS_CERRADOS_SEGUNDOS)
-    elif sesion.segundos_cabeceo() >= 2.5 or sesion.racha_cabeceo_riesgo >= 25:
+    elif sesion.segundos_cabeceo() >= UMBRAL_CABECEO_TIEMPO_SEGUNDOS:
         estado = EstadoAlerta.CABECEO
         duracion_riesgo = sesion.segundos_cabeceo()
     elif (

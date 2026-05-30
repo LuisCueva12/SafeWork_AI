@@ -136,7 +136,9 @@ class MonitorSafeWorkService:
             self._guardar_perfil_base()
             self._guardar_reporte_sesion()
 
-        if self._sesion.total_lecturas_validas and self._sesion.total_lecturas_validas % 45 == 0:
+        # Reducir la frecuencia de escritura a disco (de 45 a 150 frames = 10s a 15fps)
+        # Esto evita bloqueos de I/O en el hilo de visión, haciéndolo más rápido.
+        if self._sesion.total_lecturas_validas and self._sesion.total_lecturas_validas % 150 == 0:
             self._guardar_reporte_sesion()
 
         mensaje_estado = estado.estado.value

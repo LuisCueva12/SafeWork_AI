@@ -3,6 +3,7 @@ from __future__ import annotations
 from PyQt6.QtCore import QEvent, Qt, QUrl
 from PyQt6.QtGui import QAction, QCloseEvent, QDesktopServices, QIcon, QPixmap
 from PyQt6.QtWidgets import (
+    QApplication,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -13,6 +14,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMainWindow,
     QMenu,
+    QProgressBar,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -80,6 +82,8 @@ class SafeWorkApp(QMainWindow):
         self._saliendo = False
         self._total_ausencias_seg: float = 0.0
         self._conteo_ausencias: int = 0
+        self._ultimo_color_clave: str | None = None
+        self._en_calibracion: bool = True
 
         self.setStyleSheet(APP_STYLESHEET)
         self._construir_ui()
@@ -185,59 +189,7 @@ class SafeWorkApp(QMainWindow):
         barra.showMessage("SafeWork AI listo")
         self.setStatusBar(barra)
 
-    def _crear_sidebar(self) -> QWidget:
-        sidebar = QWidget()
-        sidebar.setObjectName("sidebar")
-        sidebar.setFixedWidth(240)
-        sidebar.setStyleSheet(SIDEBAR_STYLE)
-        layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(14, 16, 14, 14)
-        layout.setSpacing(8)
 
-        brand = QLabel("SafeWork IA")
-        brand.setStyleSheet("font-size: 25px; font-weight: 700; color: #e2f4ff;")
-        layout.addWidget(brand)
-        layout.addSpacing(8)
-
-        nav_items = [
-            ("\uE80F", "Dashboard",      True),
-            ("\uE722", "Monitoreo",      False),
-            ("\uE769", "Pausas",         False),
-            ("\uE9D2", "Reportes",       False),
-            ("\uE713", "Configuracion",  False),
-        ]
-        for icon_ch, label, active in nav_items:
-            btn = QPushButton()
-            btn.setFixedHeight(48)
-            btn_layout = QHBoxLayout(btn)
-            btn_layout.setContentsMargins(0, 0, 0, 0)
-            btn_layout.setSpacing(12)
-
-            icon_lbl = QLabel(icon_ch)
-            icon_lbl.setFixedSize(22, 22)
-            icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            icon_lbl.setStyleSheet(
-                "font-family: 'Segoe MDL2 Assets'; font-size: 16px; background: transparent; "
-                + ("color: #ffffff;" if active else "color: #9cc1ea;")
-            )
-            text_lbl = QLabel(label)
-            text_lbl.setStyleSheet(
-                "font-family: 'Segoe UI'; font-size: 13px; background: transparent; "
-                + ("font-weight: 600; color: #ffffff;" if active else "font-weight: 500; color: #c5dbf4;")
-            )
-            btn_layout.addWidget(icon_lbl)
-            btn_layout.addWidget(text_lbl)
-            btn_layout.addStretch(1)
-
-            btn.setStyleSheet(NAV_BUTTON_ACTIVE if active else NAV_BUTTON_BASE)
-            layout.addWidget(btn)
-
-        layout.addStretch(1)
-
-        ver_lbl = QLabel("v1.0.0  |  Python + PyQt6")
-        ver_lbl.setStyleSheet("font-size: 10px; color: #89afd8; background: transparent;")
-        layout.addWidget(ver_lbl)
-        return sidebar
 
     def _crear_header(self) -> QWidget:
         header = QWidget()
@@ -780,7 +732,7 @@ class SafeWorkApp(QMainWindow):
         escalado = pixmap.scaled(
             target,
             Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
+            Qt.TransformationMode.FastTransformation,
         )
         self._video.setPixmap(escalado)
 
@@ -790,11 +742,13 @@ class SafeWorkApp(QMainWindow):
         self._estado.setText(estado_base)
 
         clave = next((k for k in STATUS_COLORS if k in estado_base.upper()), None)
-        color, bg, border = STATUS_COLORS.get(clave, ("#1e293b", "#f8fafc", "#e2e8f0"))
-        self._estado.setStyleSheet(
-            f"font-size: 15px; font-weight: 700; color: {color}; "
-            f"background: {bg}; padding: 8px 12px; border-radius: 8px; border: 1px solid {border};"
-        )
+        if clave != self._ultimo_color_clave:
+            color, bg, border = STATUS_COLORS.get(clave, ("#1e293b", "#f8fafc", "#e2e8f0"))
+            self._estado.setStyleSheet(
+                f"font-size: 15px; font-weight: 700; color: {color}; "
+                f"background: {bg}; padding: 8px 12px; border-radius: 8px; border: 1px solid {border};"
+            )
+            self._ultimo_color_clave = clave
         self._estado_aux.setText(
             "Pausa temporal entre alertas" if "Cooldown activo" in estado else "Monitoreo activo"
         )
@@ -829,7 +783,10 @@ class SafeWorkApp(QMainWindow):
         }
         texto = etiquetas.get(nivel, "Monitoreo activo")
         self._estado_aux.setText(texto)
-        if nivel != "RIESGO_CRITICO":
+        if nivel == "RIESGO_CRITICO":
+            # Si el riesgo es crítico, el banner muestra el último mensaje
+            pass
+        else:
             self._bloqueo_banner.setVisible(False)
 
     def _manejar_bloqueo_critico(self, mensaje: str) -> None:
@@ -1065,4 +1022,12 @@ class SafeWorkApp(QMainWindow):
         if self._tray_icon is not None:
             self._tray_icon.hide()
         super().closeEvent(event)
+        QApplication.instance().quit()
 
+    def changeEvent(self, event: QEvent) -> None:
+        """Pausa la renderización del frame de video si la ventana se oculta o minimiza."""
+        if event.type() == QEvent.Type.WindowStateChange:
+            is_minimized_or_hidden = self.isMinimized() or self.isHidden()
+            if self._motor is not None:
+                self._motor.set_ui_visible(not is_minimized_or_hidden)
+        super().changeEvent(event)

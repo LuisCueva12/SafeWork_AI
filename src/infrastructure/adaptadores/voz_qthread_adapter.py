@@ -11,18 +11,22 @@ class VozQThreadAdapter(QThread):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self._cola: queue.Queue[str | None] = queue.Queue()
+        self._cola: queue.Queue[str | None] = queue.Queue(maxsize=2)
         self._engine = None
 
     def emitir_mensaje(self, mensaje: str) -> None:
         if mensaje:
-            self._cola.put(mensaje)
+            try:
+                self._cola.put_nowait(mensaje)
+            except queue.Full:
+                pass
 
     def limpiar_cola(self) -> None:
         with self._cola.mutex:
             self._cola.queue.clear()
 
     def detener(self) -> None:
+        self.limpiar_cola()
         self._cola.put(None)
         self.wait(3000)
 

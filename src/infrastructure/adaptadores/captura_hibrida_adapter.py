@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import os
+import time
 from pathlib import Path
 
 import cv2
@@ -32,6 +33,7 @@ class CapturaHibridaAdapter(PuertoCapturaCorporal):
         self._captura_video: cv2.VideoCapture | None = None
         self._ultimo_frame: np.ndarray | None = None
         self._ultimo_timestamp_ms = 0
+        self._ts_inicio_monotonic: float = 0.0
         self._face_landmarker: mp_vision.FaceLandmarker | None = None
         self._pose_landmarker: mp_vision.PoseLandmarker | None = None
         self._modelo_yolo = None
@@ -39,6 +41,7 @@ class CapturaHibridaAdapter(PuertoCapturaCorporal):
         self._ultima_clase_yolo = "normal"
         self._ultima_confianza_yolo = 0.0
         self._modo_degradado = False
+        self._tiene_iris_landmarks = True
         self._avisos_runtime: list[str] = []
         self._configurar_ultralytics()
         self._inicializar_modelos()
@@ -47,6 +50,7 @@ class CapturaHibridaAdapter(PuertoCapturaCorporal):
         self._captura_video = cv2.VideoCapture(self._settings.capture_index)
         self._captura_video.set(cv2.CAP_PROP_FRAME_WIDTH, self._settings.frame_width)
         self._captura_video.set(cv2.CAP_PROP_FRAME_HEIGHT, self._settings.frame_height)
+        self._ts_inicio_monotonic = time.monotonic()
 
     def capturar_lectura(self) -> LecturaHibrida | None:
         if self._captura_video is None or not self._captura_video.isOpened():
@@ -171,13 +175,11 @@ class CapturaHibridaAdapter(PuertoCapturaCorporal):
             )
 
     def _nuevo_timestamp(self) -> int:
-        import time
-
-        timestamp_ms = int(time.time() * 1000)
-        if timestamp_ms <= self._ultimo_timestamp_ms:
-            timestamp_ms = self._ultimo_timestamp_ms + 1
-        self._ultimo_timestamp_ms = timestamp_ms
-        return timestamp_ms
+        elapsed_ms = int((time.monotonic() - self._ts_inicio_monotonic) * 1000)
+        if elapsed_ms <= self._ultimo_timestamp_ms:
+            elapsed_ms = self._ultimo_timestamp_ms + 1
+        self._ultimo_timestamp_ms = elapsed_ms
+        return elapsed_ms
 
     def _mapear_rostro(self, lectura: LecturaHibrida, face_landmarks) -> None:
         lectura.ear = (self._calcular_ear(face_landmarks, OJO_IZQ_PUNTOS) + self._calcular_ear(face_landmarks, OJO_DER_PUNTOS)) / 2.0
@@ -275,12 +277,17 @@ class CapturaHibridaAdapter(PuertoCapturaCorporal):
 
     def _detectar_mirada_abajo(self, face_landmarks) -> bool:
         if len(face_landmarks) < 478:
+            if self._tiene_iris_landmarks:
+                self._tiene_iris_landmarks = False
+                self._avisos_runtime.append(
+                    "Modelo facial sin landmarks de iris: deteccion de mirada abajo desactivada."
+                )
             return False
 
-        iris_izq_y = face_landmarks[468].y
+        iris_izq_y    = face_landmarks[468].y
         ojo_izq_top_y = face_landmarks[386].y
         ojo_izq_bot_y = face_landmarks[374].y
-        iris_der_y = face_landmarks[473].y
+        iris_der_y    = face_landmarks[473].y
         ojo_der_top_y = face_landmarks[159].y
         ojo_der_bot_y = face_landmarks[145].y
 
@@ -288,25 +295,23 @@ class CapturaHibridaAdapter(PuertoCapturaCorporal):
         alto_der = ojo_der_bot_y - ojo_der_top_y
         if alto_izq <= 0 or alto_der <= 0:
             return False
-
-        # Si el ojo esta casi cerrado, la posicion del iris deja de ser estable
-        # y no conviene usarla para distinguir mirar al teclado vs somnolencia.
         if alto_izq < 0.010 or alto_der < 0.010:
             return False
 
-        pos_izq = (iris_izq_y - ojo_izq_top_y) / alto_izq
-        pos_der = (iris_der_y - ojo_der_top_y) / alto_der
+        pos_izq  = (iris_izq_y - ojo_izq_top_y) / alto_izq
+        pos_der  = (iris_der_y - ojo_der_top_y) / alto_der
         promedio = (pos_izq + pos_der) / 2.0
         return promedio > 0.72 and max(pos_izq, pos_der) > 0.76
 
     def _mano_sobre_rostro(self, nariz: Coordenada, point_to_coord) -> bool:
         if not nariz.es_confiable():
             return False
-
         puntos = [point_to_coord(15), point_to_coord(16), point_to_coord(19), point_to_coord(20)]
         for punto in puntos:
-            if punto.es_confiable() and self._distancia(punto, nariz) < 0.22:
-                return True
+            if punto.es_confiable():
+                dist_2d = math.sqrt((punto.x - nariz.x) ** 2 + (punto.y - nariz.y) ** 2)
+                if dist_2d < 0.18:
+                    return True
         return False
 
     @staticmethod

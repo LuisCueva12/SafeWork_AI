@@ -87,6 +87,7 @@ class SesionTrabajador:
         if self.inicio_ausencia is not None:
             self.ultimo_reingreso = now
             self.inicio_ausencia = None
+            self.indice_fatiga = max(0.0, self.indice_fatiga - 0.20)
         self.ultima_deteccion_exitosa = now
         self.total_lecturas_validas += 1
 
@@ -128,7 +129,7 @@ class SesionTrabajador:
   
     def registrar_cabeza_erguida(self) -> None:
         if self.inicio_cabeceo is not None:
-            if (datetime.now() - self.ultimo_registro_cabeceo).total_seconds() > 0.5:
+            if (datetime.now() - self.ultimo_registro_cabeceo).total_seconds() > 0.1:
                 self.inicio_cabeceo = None
   
     def segundos_cabeceo(self) -> float:
@@ -143,7 +144,7 @@ class SesionTrabajador:
   
     def registrar_buena_postura(self) -> None:
         if self.inicio_mala_postura is not None:
-            if (datetime.now() - self.ultimo_registro_mala_postura).total_seconds() > 0.5:
+            if (datetime.now() - self.ultimo_registro_mala_postura).total_seconds() > 0.1:
                 self.inicio_mala_postura = None
   
     def segundos_mala_postura(self) -> float:
@@ -165,11 +166,7 @@ class SesionTrabajador:
         if self.inicio_cercania_monitor is None: return 0.0
         return (datetime.now() - self.inicio_cercania_monitor).total_seconds()
   
-    def iniciar_bostezo(self) -> None:
-        if not self.bostezo_actual_activo:
-            self.bostezo_actual_activo = True
-            self.historial_bostezos.append(datetime.now())
-  
+
     def finalizar_bostezo(self) -> None:
         self.bostezo_actual_activo = False
 

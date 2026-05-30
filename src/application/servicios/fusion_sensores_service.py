@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from ...domain.entities.postura import LecturaHibrida, NivelRiesgo
+from ...domain.reglas.calculo_postural import UMBRAL_MAR_BOSTEZO
 from ...domain.reglas.normalizacion_yolo import es_clase_bostezo, es_clase_fatiga, normalizar_clase_yolo
 
 
@@ -16,8 +17,7 @@ class FusionSensoresService:
             lectura.fusion_nivel = None
             lectura.fusion_motivo = ""
             return
-
-        heuristica_bostezo = lectura.mar >= 0.38
+        heuristica_bostezo = lectura.mar >= UMBRAL_MAR_BOSTEZO
         heuristica_fatiga = lectura.ear > 0 and lectura.ear <= 0.18
 
         if lectura.yolo_confianza < 0.70:

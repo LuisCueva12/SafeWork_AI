@@ -30,6 +30,11 @@ class PerfilBiometricoService:
         if not (lectura.rostro_detectado and lectura.cuerpo_detectado):
             return
 
+        if lectura.ear > 0 and lectura.ear < 0.15:
+            return
+        if lectura.mar > 0.45:
+            return  
+
         ancho_hombros, ratio_y = calcular_ratio_postural(lectura)
         if ancho_hombros <= 0:
             return

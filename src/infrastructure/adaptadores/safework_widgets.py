@@ -18,8 +18,20 @@ class CircularMetricWidget(QWidget):
         self._porcentaje_objetivo = 0.0
         self._color = QColor("#94a3b8")
         self._color_ring_bg = QColor("#e2e8f0")
+        # Caché de fuentes: se crean una sola vez en __init__ en lugar de en cada paintEvent.
+        # paintEvent se llama ~41 veces/segundo (antes) → ahora 25 veces/segundo con timer a 40ms.
+        # Sin caché cada repaint creaba y destruía 5 objetos QFont.
+        self._font_icon = QFont("Segoe MDL2 Assets", 12)
+        self._font_title = QFont("Segoe UI", 10)
+        self._font_title.setWeight(QFont.Weight.DemiBold)
+        self._font_val = QFont("Segoe UI", 16)
+        self._font_val.setWeight(QFont.Weight.Bold)
+        self._font_sub = QFont("Segoe UI", 10)
+        self._font_sub.setWeight(QFont.Weight.DemiBold)
+        self._font_desc = QFont("Segoe UI", 8)
+        # Timer a 40ms (25fps) en lugar de 24ms (41fps) — visualmente idéntico, ~40% menos CPU
         self._anim_timer = QTimer(self)
-        self._anim_timer.setInterval(24)
+        self._anim_timer.setInterval(40)
         self._anim_timer.timeout.connect(self._animar_hacia_objetivo)
         self.setFixedSize(140, 195)
 
@@ -36,7 +48,8 @@ class CircularMetricWidget(QWidget):
         self._subtexto = subtexto
         self._descripcion = descripcion
         self._color = QColor(color_hex)
-        if not self._anim_timer.isActive():
+        # Solo iniciar el timer si el widget es visible (evita repaints en segundo plano)
+        if self.isVisible() and not self._anim_timer.isActive():
             self._anim_timer.start()
         self.update()
 
@@ -67,21 +80,18 @@ class CircularMetricWidget(QWidget):
         w = self.width()
         h = self.height()
         rect = QRect(0, 0, w, h)
-        
+
         painter.setPen(QPen(QColor("#dbe4f0"), 1))
         painter.setBrush(QColor("#ffffff"))
         painter.drawRoundedRect(rect.adjusted(1, 1, -2, -2), 12, 12)
 
         icon_rect = QRect(14, 14, 20, 20)
-        icon_font = QFont("Segoe MDL2 Assets", 12)
-        painter.setFont(icon_font)
+        painter.setFont(self._font_icon)
         painter.setPen(QColor("#64748b"))
         painter.drawText(icon_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, self._icono)
-        
+
         title_rect = QRect(36, 14, w - 40, 20)
-        title_font = QFont("Segoe UI", 10)
-        title_font.setWeight(QFont.Weight.DemiBold)
-        painter.setFont(title_font)
+        painter.setFont(self._font_title)
         painter.setPen(QColor("#0f172a"))
         painter.drawText(title_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, self._titulo)
 
@@ -105,24 +115,19 @@ class CircularMetricWidget(QWidget):
             span = int(-270 * 16 * self._porcentaje / 100.0)
             painter.drawArc(ring_rect.adjusted(ring_width // 2, ring_width // 2, -ring_width // 2, -ring_width // 2), 225 * 16, span)
 
-        val_font = QFont("Segoe UI", 16)
-        val_font.setWeight(QFont.Weight.Bold)
-        painter.setFont(val_font)
+        painter.setFont(self._font_val)
         painter.setPen(QColor("#1e293b"))
         painter.drawText(ring_rect, Qt.AlignmentFlag.AlignCenter, self._valor_texto_animado)
 
         sub_y = ring_y + ring_size + 14
         sub_rect = QRect(0, sub_y, w, 18)
-        sub_font = QFont("Segoe UI", 10)
-        sub_font.setWeight(QFont.Weight.DemiBold)
-        painter.setFont(sub_font)
+        painter.setFont(self._font_sub)
         painter.setPen(self._color)
         painter.drawText(sub_rect, Qt.AlignmentFlag.AlignCenter, self._subtexto)
 
         if self._descripcion:
             desc_rect = QRect(10, sub_y + 20, w - 20, 28)
-            desc_font = QFont("Segoe UI", 8)
-            painter.setFont(desc_font)
+            painter.setFont(self._font_desc)
             painter.setPen(QColor("#94a3b8"))
             painter.drawText(desc_rect, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter | Qt.TextFlag.TextWordWrap, self._descripcion)
 
@@ -132,8 +137,9 @@ class MiniTrendWidget(QWidget):
         super().__init__(parent)
         self._valores: list[float] = [0.0, 0.0, 0.0, 0.0]
         self._objetivo: list[float] = [0.0, 0.0, 0.0, 0.0]
+        # Timer a 40ms (25fps) en lugar de 30ms (33fps)
         self._anim_timer = QTimer(self)
-        self._anim_timer.setInterval(30)
+        self._anim_timer.setInterval(40)
         self._anim_timer.timeout.connect(self._animar_hacia_objetivo)
         self.setMinimumHeight(78)
 
@@ -144,7 +150,8 @@ class MiniTrendWidget(QWidget):
             self._objetivo = [max(0.0, float(v)) for v in valores]
         while len(self._objetivo) < 4:
             self._objetivo.append(0.0)
-        if not self._anim_timer.isActive():
+        # Solo animar si el widget está visible
+        if self.isVisible() and not self._anim_timer.isActive():
             self._anim_timer.start()
         self.update()
 
