@@ -17,26 +17,25 @@ En el entorno corporativo moderno, los trastornos musculoesqueléticos y el agot
 
 ## 🧠 Innovaciones y Pilares Científicos de Precisión
 
-Para garantizar un estándar comercial B2B libre de falsos positivos y falsas alarmas, SafeWork AI implementa procesamiento avanzado de señales biomecánicas y machine learning:
+Para garantizar un estándar comercial B2B libre de falsos positivos y falsas alarmas, SafeWork AI implementa procesamiento avanzado de señales biomecánicas y machine learning, refinado meticulosamente para una experiencia "en vivo" instantánea:
 
-### 1. Fusión de Sensores (YOLO + MediaPipe)
-*   **MediaPipe Landmarks**: Obtiene coordenadas 3D precisas de rostro y tren superior para mediciones trigonométricas de inclinación de orejas, nariz, ojos, labios y hombros.
-*   **YOLO Classification**: Identifica estados cognitivos complejos (bostezos activos, ojos cerrados por somnolencia prolongada o fatiga facial).
-*   **Lógica de Coexistencia y Oclusión**: Si el usuario se frota la cara o apoya la mano sobre su rostro (oclusión), el sistema lo detecta inteligentemente para suspender momentáneamente el cálculo de fatiga y evitar falsas alertas.
+### 1. Fusión de Sensores y Validación Cruzada (YOLO + MediaPipe)
+*   **MediaPipe Landmarks**: Obtiene coordenadas 3D precisas de rostro y tren superior para mediciones trigonométricas puras de orejas y hombros, garantizando **inmunidad a cámaras descentradas**.
+*   **YOLO Classification**: Identifica estados cognitivos complejos (bostezos, fatiga). Se exige un **85% de confianza mínima** en la red neuronal, eliminando detecciones erróneas por sombras o movimientos rápidos.
+*   **Lógica de Coexistencia y Oclusión**: Un bostezo detectado por YOLO se somete a validación cruzada obligatoria geométrica (apertura bucal sostenida por más de 2 segundos), evitando falsos positivos al hablar o gesticular.
 
 ### 2. Calibración Biométrica Inteligente (Perfil Personalizado)
 Durante los primeros segundos de cada sesión, el sistema analiza y calcula la postura óptima de reposo del usuario, adaptándose a su fisonomía:
 *   **EAR Dinámico (Eye Aspect Ratio)**: Determina la apertura ocular de base para estimar con exactitud el nivel de somnolencia individual.
-*   **MAR Dinámico (Mouth Aspect Ratio)**: Mide la apertura bucal natural en reposo para calibrar el umbral de bostezo, ignorando gestos naturales de conversación o sonrisa.
+*   **MAR Dinámico (Mouth Aspect Ratio)**: Mide la apertura bucal natural en reposo para calibrar el umbral de bostezo.
 *   **Invariancia de Distancia y Zoom**: Normaliza la relación del rostro respecto al ancho de hombros tridimensional, impidiendo fallas de perspectiva cuando el trabajador se aleja o se acerca a la webcam.
 
-### 3. Filtro de Suavizado Biomecánico (Anti-Jitter)
-Integra un filtro de **Media Móvil Exponencial (EMA)** en tiempo real con un coeficiente de suavizado $\alpha = 0.30$:
-$$S_t = \alpha \cdot X_t + (1 - \alpha) \cdot S_{t-1}$$
-Esto elimina por completo el temblor o ruido del sensor óptico en condiciones de baja iluminación, estabilizando los cálculos en pantalla.
+### 3. Filtros de Recuperación Inmediata (Anti-Jitter y Cooldown Ágil)
+*   Integra un filtro de **Media Móvil Exponencial (EMA)** optimizado ($\alpha = 0.65$) que elimina el temblor óptico pero permite a la IA responder en milisegundos a las correcciones posturales del usuario.
+*   **Recuperación Rápida**: Si el trabajador corrige su postura o cercanía, el sistema anula penalizaciones y elimina el estado de "Cooldown" en tan solo **0.1 segundos**, sintiéndose ultra-responsivo.
 
-### 4. Máquina de Estados con Histéresis
-Las alertas ergonómicas y transiciones de estados (Óptimo ↔ Cabeceo ↔ Mala Postura) están reguladas por un módulo de histéresis temporal. Esto evita alertas parpadeantes debido a movimientos rápidos del cuerpo.
+### 4. Entorno de Pruebas de Dominio Aislado (TDD)
+El núcleo matemático y geométrico (`calculo_postural.py`) se valida mediante una **Suite de Pruebas Profesionales Aisladas (`run_tests.py`)**. Esto permite ejecutar simulaciones de fatiga, bostezos falsos y cortes de cámara sin inicializar la interfaz gráfica pesada (PyQt6), garantizando la estabilidad de las reglas de negocio a 15 FPS en menos de 1 segundo de testeo continuo.
 
 ---
 
