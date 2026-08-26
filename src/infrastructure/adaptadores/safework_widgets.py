@@ -21,9 +21,10 @@ def aplicar_sombra_suave(
 
 
 class CircularMetricWidget(QWidget):
-    def __init__(self, titulo: str, parent=None) -> None:
+    def __init__(self, titulo: str, icono: str = "", parent=None) -> None:
         super().__init__(parent)
         self._titulo = titulo
+        self._icono = icono
         self._valor_texto = "--"
         self._valor_texto_animado = "--"
         self._subtexto = ""
@@ -35,6 +36,8 @@ class CircularMetricWidget(QWidget):
         # Caché de fuentes: se crean una sola vez en __init__ en lugar de en cada paintEvent.
         # paintEvent se llama ~41 veces/segundo (antes) → ahora 25 veces/segundo con timer a 40ms.
         # Sin caché cada repaint creaba y destruía 5 objetos QFont.
+        self._font_icon = QFont()
+        self._font_icon.setPointSize(12)
         self._font_title = QFont("Segoe UI", 10)
         self._font_title.setWeight(QFont.Weight.DemiBold)
         self._font_val = QFont("Segoe UI", 16)
@@ -99,7 +102,15 @@ class CircularMetricWidget(QWidget):
         painter.setBrush(QColor("#ffffff"))
         painter.drawRoundedRect(rect.adjusted(1, 1, -2, -2), 12, 12)
 
-        title_rect = QRect(14, 14, w - 20, 20)
+        titulo_x = 14
+        if self._icono:
+            icon_rect = QRect(14, 14, 20, 20)
+            painter.setFont(self._font_icon)
+            painter.setPen(QColor("#64748b"))
+            painter.drawText(icon_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, self._icono)
+            titulo_x = 36
+
+        title_rect = QRect(titulo_x, 14, w - titulo_x - 6, 20)
         painter.setFont(self._font_title)
         painter.setPen(QColor("#0f172a"))
         painter.drawText(title_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, self._titulo)

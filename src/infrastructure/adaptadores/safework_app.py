@@ -316,10 +316,10 @@ class SafeWorkApp(QMainWindow):
         metricas_row.setSpacing(4)
         metricas_row.setAlignment(Qt.AlignmentFlag.AlignHCenter)
 
-        self._circ_postura = CircularMetricWidget("Postura")
-        self._circ_ojos = CircularMetricWidget("Fatiga")
-        self._circ_distancia = CircularMetricWidget("Distancia")
-        self._circ_energia = CircularMetricWidget("Atencion")
+        self._circ_postura = CircularMetricWidget("Postura", "🧍")
+        self._circ_ojos = CircularMetricWidget("Fatiga", "😴")
+        self._circ_distancia = CircularMetricWidget("Distancia", "🖥")
+        self._circ_energia = CircularMetricWidget("Atencion", "🎯")
 
         for w in (self._circ_postura, self._circ_ojos, self._circ_distancia, self._circ_energia):
             metricas_row.addWidget(w)
