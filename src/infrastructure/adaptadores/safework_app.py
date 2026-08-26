@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import QEvent, Qt, QUrl
-from PyQt6.QtGui import QAction, QCloseEvent, QDesktopServices, QIcon, QPixmap
+from PyQt6.QtGui import QAction, QCloseEvent, QColor, QDesktopServices, QIcon, QPixmap
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -45,7 +45,7 @@ from .safework_styles import (
     VIDEO_FEED_ERROR,
     VIDEO_FEED_IDLE,
 )
-from .safework_widgets import CircularMetricWidget, MiniTrendWidget
+from .safework_widgets import CircularMetricWidget, MiniTrendWidget, aplicar_sombra_suave
 from .voz_qthread_adapter import VozQThreadAdapter
 
 
@@ -196,6 +196,7 @@ class SafeWorkApp(QMainWindow):
         header.setObjectName("header")
         header.setFixedHeight(60)
         header.setStyleSheet(HEADER_STYLE)
+        aplicar_sombra_suave(header, blur=16, offset_y=3)
         layout = QHBoxLayout(header)
         layout.setContentsMargins(20, 0, 20, 0)
         layout.setSpacing(12)
@@ -265,6 +266,7 @@ class SafeWorkApp(QMainWindow):
         card = QFrame()
         card.setObjectName("card")
         card.setStyleSheet(CARD_STYLE)
+        aplicar_sombra_suave(card)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(14, 14, 14, 14)
         layout.setSpacing(10)
@@ -342,6 +344,7 @@ class SafeWorkApp(QMainWindow):
         form_card = QFrame()
         form_card.setObjectName("card")
         form_card.setStyleSheet(CARD_STYLE)
+        aplicar_sombra_suave(form_card, blur=18)
         form = QFormLayout(form_card)
         form.setContentsMargins(16, 16, 16, 16)
         form.setHorizontalSpacing(14)
@@ -422,6 +425,7 @@ class SafeWorkApp(QMainWindow):
         card = QFrame()
         card.setObjectName("card")
         card.setStyleSheet(CARD_STYLE)
+        aplicar_sombra_suave(card)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(12)
@@ -472,7 +476,7 @@ class SafeWorkApp(QMainWindow):
         self._estado.setWordWrap(True)
         self._estado.setStyleSheet(
             "font-size: 13px; font-weight: 700; color: #0284c7; "
-            "background: #eff6ff; padding: 12px; border-radius: 8px; border: 1px solid #bae6fd;"
+            "background: #eff6ff; padding: 12px; border-radius: 10px;"
         )
         layout.addWidget(self._estado)
 
@@ -493,7 +497,7 @@ class SafeWorkApp(QMainWindow):
         self._ausencia_ultima.setWordWrap(True)
         self._ausencia_ultima.setStyleSheet(
             "font-size: 12px; color: #1d4ed8; background: #eff6ff; "
-            "padding: 12px; border-radius: 8px; border: 1px solid #bfdbfe;"
+            "padding: 12px; border-radius: 10px;"
         )
         layout.addWidget(self._ausencia_ultima)
 
@@ -501,7 +505,7 @@ class SafeWorkApp(QMainWindow):
         self._ultima_incidencia.setWordWrap(True)
         self._ultima_incidencia.setStyleSheet(
             "font-size: 12px; color: #065f46; background: #ecfdf5; "
-            "padding: 12px; border-radius: 8px; border: 1px solid #a7f3d0;"
+            "padding: 12px; border-radius: 10px;"
         )
         layout.addWidget(self._ultima_incidencia)
         
@@ -512,6 +516,7 @@ class SafeWorkApp(QMainWindow):
         card = QFrame()
         card.setObjectName("card")
         card.setStyleSheet(CARD_STYLE)
+        aplicar_sombra_suave(card)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(12)
@@ -530,7 +535,7 @@ class SafeWorkApp(QMainWindow):
 
         score_panel = QFrame()
         score_panel.setStyleSheet(
-            "QFrame { background: #f8fbff; border: 1px solid #dbeafe; border-radius: 8px; }"
+            "QFrame { background: #f8fbff; border-radius: 10px; }"
         )
         score_row = QHBoxLayout(score_panel)
         score_row.setContentsMargins(12, 10, 12, 10)
@@ -598,7 +603,7 @@ class SafeWorkApp(QMainWindow):
     def _crear_stat_row(etiqueta: str, valor: str) -> QWidget:
         row = QFrame()
         row.setStyleSheet(
-            "QFrame { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; }"
+            "QFrame { background: #f8fafc; border-radius: 10px; }"
         )
         layout = QHBoxLayout(row)
         layout.setContentsMargins(10, 7, 10, 7)
@@ -640,10 +645,10 @@ class SafeWorkApp(QMainWindow):
 
     def _set_estado_error(self, titulo: str, aux: str, detalle: str) -> None:
         self._estado.setText(titulo)
-        color, bg, border = STATUS_COLORS.get("ERROR", ("#ef4444", "#1f0202", "#7f1d1d"))
+        color, bg = STATUS_COLORS.get("ERROR", ("#ef4444", "#1f0202"))
         self._estado.setStyleSheet(
             f"font-size: 15px; font-weight: 700; color: {color}; "
-            f"background: {bg}; padding: 8px 12px; border-radius: 8px; border: 1px solid {border};"
+            f"background: {bg}; padding: 8px 12px; border-radius: 10px;"
         )
         self._estado_aux.setText(aux)
         self._detalle.setText(detalle)
@@ -716,7 +721,7 @@ class SafeWorkApp(QMainWindow):
         )
         self._ausencia_ultima.setStyleSheet(
             "font-size: 12px; color: #374151; background: #eff6ff; "
-            "padding: 8px 10px; border-radius: 8px; border: 1px solid #bae6fd;"
+            "padding: 8px 10px; border-radius: 10px;"
         )
         self._actualizar_stat(self._ausencia_total_lbl, total_fmt)
         self._actualizar_stat(self._ausencia_conteo_lbl, f"{self._conteo_ausencias} vez" if self._conteo_ausencias == 1 else f"{self._conteo_ausencias} veces")
@@ -743,10 +748,10 @@ class SafeWorkApp(QMainWindow):
 
         clave = next((k for k in STATUS_COLORS if k in estado_base.upper()), None)
         if clave != self._ultimo_color_clave:
-            color, bg, border = STATUS_COLORS.get(clave, ("#1e293b", "#f8fafc", "#e2e8f0"))
+            color, bg = STATUS_COLORS.get(clave, ("#1e293b", "#f8fafc"))
             self._estado.setStyleSheet(
                 f"font-size: 15px; font-weight: 700; color: {color}; "
-                f"background: {bg}; padding: 8px 12px; border-radius: 8px; border: 1px solid {border};"
+                f"background: {bg}; padding: 8px 12px; border-radius: 10px;"
             )
             self._ultimo_color_clave = clave
         self._estado_aux.setText(
@@ -771,10 +776,10 @@ class SafeWorkApp(QMainWindow):
 
     def _actualizar_nivel_riesgo(self, nivel: str) -> None:
         self._nivel_riesgo_actual = nivel
-        border_color = LEVEL_COLORS.get(nivel, "#0f2040")
-        self._video.setStyleSheet(
-            f"background-color: #020912; border: 2px solid {border_color}; border-radius: 10px;"
-        )
+        color_glow = QColor(LEVEL_COLORS.get(nivel, "#0f2040"))
+        color_glow.setAlpha(110)
+        self._video.setStyleSheet("background-color: #020912; border: none; border-radius: 14px;")
+        aplicar_sombra_suave(self._video, blur=28, offset_y=0, color=color_glow)
         etiquetas = {
             "OBSERVACION":       "Observacion preventiva",
             "RIESGO_LEVE":       "Riesgo leve",
@@ -978,19 +983,23 @@ class SafeWorkApp(QMainWindow):
         self.close()
 
     def changeEvent(self, event: QEvent) -> None:
-        if (
-            event.type() == QEvent.Type.WindowStateChange
-            and self.isMinimized()
-            and self._tray_icon is not None
-            and self._tray_icon.isVisible()
-        ):
-            self.hide()
-            self._tray_icon.showMessage(
-                "SafeWork AI",
-                "La aplicacion fue minimizada a la bandeja del sistema.",
-                QSystemTrayIcon.MessageIcon.Information,
-                2500,
-            )
+        """Minimiza a la bandeja del sistema y pausa el renderizado de video."""
+        if event.type() == QEvent.Type.WindowStateChange:
+            if (
+                self.isMinimized()
+                and self._tray_icon is not None
+                and self._tray_icon.isVisible()
+            ):
+                self.hide()
+                self._tray_icon.showMessage(
+                    "SafeWork AI",
+                    "La aplicacion fue minimizada a la bandeja del sistema.",
+                    QSystemTrayIcon.MessageIcon.Information,
+                    2500,
+                )
+            if self._motor is not None:
+                is_minimized_or_hidden = self.isMinimized() or self.isHidden()
+                self._motor.set_ui_visible(not is_minimized_or_hidden)
         super().changeEvent(event)
 
     def closeEvent(self, event: QCloseEvent) -> None:
@@ -1023,11 +1032,3 @@ class SafeWorkApp(QMainWindow):
             self._tray_icon.hide()
         super().closeEvent(event)
         QApplication.instance().quit()
-
-    def changeEvent(self, event: QEvent) -> None:
-        """Pausa la renderización del frame de video si la ventana se oculta o minimiza."""
-        if event.type() == QEvent.Type.WindowStateChange:
-            is_minimized_or_hidden = self.isMinimized() or self.isHidden()
-            if self._motor is not None:
-                self._motor.set_ui_visible(not is_minimized_or_hidden)
-        super().changeEvent(event)

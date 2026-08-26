@@ -65,6 +65,8 @@ class PerfilBiometricoService:
             return
         if proximidad_monitor >= 0.35 or angulo_cuello >= 12.0 or angulo_lateral >= 6.0:
             return
+        if sesion.racha_boca_abierta > 0 or sesion.bostezo_actual_activo:
+            return
         if lectura.ear <= 0 or lectura.mar <= 0:
             return
 

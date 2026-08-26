@@ -2,7 +2,22 @@ from __future__ import annotations
 
 from PyQt6.QtCore import QRect, Qt, QTimer
 from PyQt6.QtGui import QColor, QFont, QPainter, QPen
-from PyQt6.QtWidgets import QWidget
+from PyQt6.QtWidgets import QGraphicsDropShadowEffect, QWidget
+
+
+def aplicar_sombra_suave(
+    widget: QWidget,
+    *,
+    blur: int = 24,
+    offset_y: int = 6,
+    color: QColor | None = None,
+) -> None:
+    """Sombra difusa que reemplaza los bordes duros de tarjetas/paneles."""
+    sombra = QGraphicsDropShadowEffect(widget)
+    sombra.setBlurRadius(blur)
+    sombra.setOffset(0, offset_y)
+    sombra.setColor(color or QColor(15, 23, 42, 45))
+    widget.setGraphicsEffect(sombra)
 
 
 class CircularMetricWidget(QWidget):
@@ -34,6 +49,7 @@ class CircularMetricWidget(QWidget):
         self._anim_timer.setInterval(40)
         self._anim_timer.timeout.connect(self._animar_hacia_objetivo)
         self.setFixedSize(140, 195)
+        aplicar_sombra_suave(self, blur=18, offset_y=4)
 
     def actualizar(
         self,
@@ -81,7 +97,7 @@ class CircularMetricWidget(QWidget):
         h = self.height()
         rect = QRect(0, 0, w, h)
 
-        painter.setPen(QPen(QColor("#dbe4f0"), 1))
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor("#ffffff"))
         painter.drawRoundedRect(rect.adjusted(1, 1, -2, -2), 12, 12)
 

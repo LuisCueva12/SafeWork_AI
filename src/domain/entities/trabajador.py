@@ -48,6 +48,7 @@ class SesionTrabajador:
     ultimo_mar_filtrado: float = 0.0
     ultimo_cuello_filtrado: float = 0.0
     ultimo_lateral_filtrado: float = 0.0
+    ultimo_proximidad_filtrada: float = 0.0
     
     historial_mar: list[float] = field(default_factory=list)
     total_alertas_emitidas: int = 0
@@ -61,6 +62,10 @@ class SesionTrabajador:
     racha_postura_riesgo: int = 0
     racha_cabeceo_riesgo: int = 0
     indice_fatiga: float = 0.0
+    en_riesgo_cabeceo: bool = False
+    en_riesgo_postura_cuello: bool = False
+    en_riesgo_lateral: bool = False
+    en_riesgo_cercania: bool = False
     niveles_riesgo_actuales: dict[str, str] = field(default_factory=dict)
     incidentes: dict[str, list[dict[str, object]]] = field(default_factory=dict)
     estado_estable_actual: str = EstadoAlerta.OPTIMO.name
@@ -206,7 +211,11 @@ class SesionTrabajador:
         self.racha_ojos_cerrados = 0
         self.racha_boca_abierta = 0
         self.indice_fatiga = 0.0
- 
+        self.en_riesgo_cabeceo = False
+        self.en_riesgo_postura_cuello = False
+        self.en_riesgo_lateral = False
+        self.en_riesgo_cercania = False
+
     def limpiar_estado_transitorio(self) -> None:
         self.inicio_ojos_cerrados = None
         self.ultimo_registro_ojos_cerrados = None
@@ -229,6 +238,10 @@ class SesionTrabajador:
         self.racha_postura_riesgo = 0
         self.racha_cabeceo_riesgo = 0
         self.indice_fatiga = 0.0
+        self.en_riesgo_cabeceo = False
+        self.en_riesgo_postura_cuello = False
+        self.en_riesgo_lateral = False
+        self.en_riesgo_cercania = False
   
     def duracion_sesion(self) -> timedelta:
         return datetime.now() - self.inicio_sesion

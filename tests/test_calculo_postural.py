@@ -53,6 +53,7 @@ class CalculoPosturalTest(unittest.TestCase):
         self.sesion.base_ancho_hombros = 0.2
         self.sesion.base_ratio_y = 1.5
         self.sesion.base_z_nariz_rel = -0.1
+        self.sesion.base_ancho_cara = 0.2
         self.sesion.muestras_calibracion = 25
 
     def test_estado_optimo(self) -> None:
@@ -67,9 +68,18 @@ class CalculoPosturalTest(unittest.TestCase):
 
         # Un frame espurio con EAR bajísimo
         analizar_lectura_hibrida(crear_lectura_mock(ear=0.01), self.sesion)
-        # Por EMA alpha=0.42, el nuevo valor debería ser: 0.42*0.01 + 0.58*0.35 = 0.2072
-        # Todavía por encima del umbral de ojo cerrado (0.18) para evitar falso positivo
-        self.assertGreater(self.sesion.ultimo_ear_filtrado, UMBRAL_EAR_CERRADO)
+        # Con alpha=0.65 el filtro amortigua el pico (no salta directo a 0.01)
+        # pero no lo neutraliza por completo, priorizando la respuesta rápida:
+        # nuevo valor = 0.65*0.01 + 0.35*0.35 = 0.129
+        esperado_tras_un_pico = 0.65 * 0.01 + 0.35 * 0.35
+        self.assertAlmostEqual(self.sesion.ultimo_ear_filtrado, esperado_tras_un_pico, places=3)
+        self.assertGreater(self.sesion.ultimo_ear_filtrado, 0.01)
+        self.assertLess(self.sesion.ultimo_ear_filtrado, 0.35)
+
+        # Un segundo frame bajo consecutivo sí debe cruzar el umbral de ojo cerrado,
+        # confirmando la respuesta rápida ante un cierre sostenido real.
+        analizar_lectura_hibrida(crear_lectura_mock(ear=0.01), self.sesion)
+        self.assertLess(self.sesion.ultimo_ear_filtrado, UMBRAL_EAR_CERRADO)
 
     def test_fatiga_extrema_por_ojos_cerrados(self) -> None:
         # Simulamos que cierra los ojos durante el tiempo umbral
@@ -95,8 +105,11 @@ class CalculoPosturalTest(unittest.TestCase):
     def test_racha_cercania_se_activa(self) -> None:
         for i in range(7):
             lectura = crear_lectura_mock()
-            # z muy positivo simulando cercanía (nariz muy al frente de hombros)
+            # Simula un acercamiento real: la nariz se adelanta a los hombros
+            # y el ancho facial crece, tal como ocurre físicamente al acercarse
+            # a la cámara (ambas señales combinadas cruzan el umbral de 0.72).
             lectura.nariz.z = -1.0
+            lectura.ancho_cara = 0.26
             estado = analizar_lectura_hibrida(lectura, self.sesion)
             if i < 5:
                 self.assertEqual(estado.estado, EstadoAlerta.OPTIMO)

@@ -5,6 +5,7 @@ import os
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from ...application.servicios.ofuscacion_json import desofuscar, ofuscar
 from ...domain.entities.trabajador import SesionTrabajador
 
 
@@ -28,40 +29,10 @@ class MemoriaUsuarioJsonAdapter:
         ):
             path.mkdir(parents=True, exist_ok=True)
 
-    @staticmethod
-    def _obfuscar(texto: str) -> str:
-        try:
-            import base64
-            key = 0x5A
-            encoded = bytearray(texto.encode("utf-8"))
-            for i in range(len(encoded)):
-                encoded[i] ^= key
-            return base64.b64encode(encoded).decode("utf-8")
-        except Exception:
-            return texto
-
-    @staticmethod
-    def _desobfuscar(texto_obfuscado: str) -> str:
-        texto_limpio = texto_obfuscado.strip()
-        if not texto_limpio:
-            return ""
-        if texto_limpio.startswith(("{", "[")):
-            return texto_obfuscado
-        try:
-            import base64
-            key = 0x5A
-            decoded = base64.b64decode(texto_limpio.encode("utf-8"))
-            decoded_array = bytearray(decoded)
-            for i in range(len(decoded_array)):
-                decoded_array[i] ^= key
-            return decoded_array.decode("utf-8")
-        except Exception:
-            return texto_obfuscado
-
     def _escribir_archivo_seguro(self, ruta: Path, datos: object) -> None:
         try:
             texto_json = json.dumps(datos, ensure_ascii=False, indent=2)
-            texto_obfuscado = self._obfuscar(texto_json)
+            texto_obfuscado = ofuscar(texto_json)
             ruta.write_text(texto_obfuscado, encoding="utf-8")
         except Exception:
             try:
@@ -74,7 +45,7 @@ class MemoriaUsuarioJsonAdapter:
             return None
         try:
             contenido_original = ruta.read_text(encoding="utf-8")
-            contenido_desobfuscado = self._desobfuscar(contenido_original)
+            contenido_desobfuscado = desofuscar(contenido_original)
             return json.loads(contenido_desobfuscado)
         except Exception:
             try:
@@ -262,7 +233,12 @@ class MemoriaUsuarioJsonAdapter:
 
     @staticmethod
     def _normalizar_perfil_usuario(data: dict[str, object]) -> dict[str, str]:
-        username = os.getenv("USERNAME", "usuario_local").strip() or "usuario_local"
+        username = (
+            os.getenv("USERNAME")
+            or os.getenv("USER")
+            or os.getenv("LOGNAME")
+            or "usuario_local"
+        ).strip() or "usuario_local"
         nombre_default = username.replace(".", " ").replace("_", " ").title()
 
         def texto(clave: str, defecto: str) -> str:

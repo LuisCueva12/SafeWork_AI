@@ -1,9 +1,9 @@
 PyQt6
-qdarktheme
 ultralytics
-opencv-python
+opencv-python-headless
 mediapipe==0.10.35
 numpy
 pyttsx3
 requests
 onnxruntime
+fpdf2

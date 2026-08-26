@@ -16,8 +16,8 @@ class ReportePdfRenderer:
         pdf.add_page()
         pdf.renderizar(payload)
         salida = pdf.output(dest="S")
-        if isinstance(salida, bytes):
-            return salida
+        if isinstance(salida, (bytes, bytearray)):
+            return bytes(salida)
         return salida.encode("latin-1", errors="replace")
 
 

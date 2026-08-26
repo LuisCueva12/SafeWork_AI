@@ -30,3 +30,6 @@ Output/
 
 # Configuracion local de Ultralytics
 ultralytics_config/
+
+# Datos de runtime generados localmente (perfil, eventos, reportes de sesion)
+.runtime_data/

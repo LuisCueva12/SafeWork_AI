@@ -15,14 +15,7 @@ def main():
     
     # Buscar dinamicamente todos los tests
     discovered_suite = loader.discover('tests', pattern='test_*.py')
-    
-    # Excluir explicitamente test_monitor_safework_service.py y otros que podrian estar usando UI
-    for all_test_suite in discovered_suite:
-        for test_case in all_test_suite:
-            # unittest.discover groups tests into TestSuites
-            # Iteramos en profundidad para sacar los modulos conflictivos
-            if 'test_monitor_safework_service' not in str(test_case):
-                suite.addTest(test_case)
+    suite.addTests(discovered_suite)
             
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)

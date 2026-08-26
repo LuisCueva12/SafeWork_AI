@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
-import base64
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from .ofuscacion_json import desofuscar
 from .reporte_analisis_service import ReporteAnalisisService
 from .reporte_pdf_renderer import ReportePdfRenderer
 
@@ -124,11 +124,8 @@ class ReporteExportService:
             data = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
             try:
-                contenido = path.read_text(encoding="utf-8").strip()
-                decoded = bytearray(base64.b64decode(contenido.encode("utf-8")))
-                for i in range(len(decoded)):
-                    decoded[i] ^= 0x5A
-                data = json.loads(decoded.decode("utf-8"))
+                contenido = path.read_text(encoding="utf-8")
+                data = json.loads(desofuscar(contenido))
             except Exception:
                 return default
         return data

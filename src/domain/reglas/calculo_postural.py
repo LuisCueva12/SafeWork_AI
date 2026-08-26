@@ -18,6 +18,21 @@ RACHA_CERCANIA_CONFIRMADA = 6
 RACHA_POSTURA_CONFIRMADA = 22
 UMBRAL_CABECEO_TIEMPO_SEGUNDOS = 2.5
 
+# Cada señal reacciona distinto: ojos/boca necesitan respuesta rápida (la
+# protección anti-parpadeo real es la duración sostenida, no el suavizado),
+# mientras que cuello/lateral/proximidad son más ruidosas por jitter de
+# landmarks y se benefician de más suavizado para evitar falsos positivos.
+EMA_ALPHA_OJOS = 0.65
+EMA_ALPHA_BOCA = 0.65
+EMA_ALPHA_CUELLO = 0.45
+EMA_ALPHA_LATERAL = 0.45
+EMA_ALPHA_PROXIMIDAD = 0.45
+
+# Histéresis de doble umbral: una vez dentro del estado de riesgo, hace falta
+# bajar por debajo de (umbral_entrada * RATIO_HISTERESIS_SALIDA) para salir,
+# evitando parpadeo de estados cuando el valor ronda el umbral de entrada.
+RATIO_HISTERESIS_SALIDA = 0.80
+
 
 def _existe_oclusion_consciente(
     lectura: LecturaHibrida,
@@ -52,6 +67,16 @@ def _nivel_por_duracion(duracion: float) -> NivelRiesgo:
 
 def _limitar(valor: float, minimo: float = 0.0, maximo: float = 100.0) -> float:
     return min(maximo, max(minimo, valor))
+
+def _actualizar_estado_histeresis(
+    valor: float,
+    umbral_entrada: float,
+    en_riesgo_previo: bool,
+    ratio_salida: float = RATIO_HISTERESIS_SALIDA,
+) -> bool:
+    if en_riesgo_previo:
+        return valor >= umbral_entrada * ratio_salida
+    return valor >= umbral_entrada
 
 def _punto_en_borde_o_fuera(punto, margen: float = 0.035) -> bool:
     if not punto.es_confiable():
@@ -95,7 +120,7 @@ def evaluar_calidad_lectura(lectura: LecturaHibrida) -> tuple[float, list[str]]:
             _punto_en_borde_o_fuera(punto)
             for punto in (lectura.nariz, lectura.hombro_izquierdo, lectura.hombro_derecho)
         ):
-            calidad -= 28.0
+            calidad -= 50.0
             evidencias.append("encuadre_incompleto")
 
     if lectura.mano_sobre_rostro:
@@ -288,19 +313,17 @@ def analizar_lectura_hibrida(lectura: LecturaHibrida, sesion: SesionTrabajador) 
     if observacion_yolo_baja_confianza:
         clase = "normal"
     
-    alpha = 0.65
-
     if lectura.rostro_detectado and lectura.ear > 0:
         if sesion.ultimo_ear_filtrado == 0.0:
             sesion.ultimo_ear_filtrado = lectura.ear
         else:
-            sesion.ultimo_ear_filtrado = alpha * lectura.ear + (1.0 - alpha) * sesion.ultimo_ear_filtrado
+            sesion.ultimo_ear_filtrado = EMA_ALPHA_OJOS * lectura.ear + (1.0 - EMA_ALPHA_OJOS) * sesion.ultimo_ear_filtrado
 
     if lectura.rostro_detectado and lectura.mar > 0:
         if sesion.ultimo_mar_filtrado == 0.0:
             sesion.ultimo_mar_filtrado = lectura.mar
         else:
-            sesion.ultimo_mar_filtrado = alpha * lectura.mar + (1.0 - alpha) * sesion.ultimo_mar_filtrado
+            sesion.ultimo_mar_filtrado = EMA_ALPHA_BOCA * lectura.mar + (1.0 - EMA_ALPHA_BOCA) * sesion.ultimo_mar_filtrado
         sesion.registrar_mar_lectura(sesion.ultimo_mar_filtrado)
 
     factor_sensibilidad = sesion.factor_sensibilidad()
@@ -395,22 +418,31 @@ def analizar_lectura_hibrida(lectura: LecturaHibrida, sesion: SesionTrabajador) 
                 sesion.indice_fatiga = max(0.0, sesion.indice_fatiga - 0.03)
 
     angulo_cuello_raw, angulo_lateral_raw = calcular_postura(lectura, sesion)
-    proximidad_monitor = calcular_proximidad_monitor(lectura, sesion)
+    proximidad_monitor_raw = calcular_proximidad_monitor(lectura, sesion)
 
     if lectura.cuerpo_detectado and angulo_cuello_raw > 0:
         if sesion.ultimo_cuello_filtrado == 0.0:
             sesion.ultimo_cuello_filtrado = angulo_cuello_raw
         else:
-            sesion.ultimo_cuello_filtrado = alpha * angulo_cuello_raw + (1.0 - alpha) * sesion.ultimo_cuello_filtrado
+            sesion.ultimo_cuello_filtrado = EMA_ALPHA_CUELLO * angulo_cuello_raw + (1.0 - EMA_ALPHA_CUELLO) * sesion.ultimo_cuello_filtrado
 
     if lectura.cuerpo_detectado and angulo_lateral_raw > 0:
         if sesion.ultimo_lateral_filtrado == 0.0:
             sesion.ultimo_lateral_filtrado = angulo_lateral_raw
         else:
-            sesion.ultimo_lateral_filtrado = alpha * angulo_lateral_raw + (1.0 - alpha) * sesion.ultimo_lateral_filtrado
+            sesion.ultimo_lateral_filtrado = EMA_ALPHA_LATERAL * angulo_lateral_raw + (1.0 - EMA_ALPHA_LATERAL) * sesion.ultimo_lateral_filtrado
+
+    if lectura.cuerpo_detectado and lectura.rostro_detectado:
+        if sesion.ultimo_proximidad_filtrada == 0.0:
+            sesion.ultimo_proximidad_filtrada = proximidad_monitor_raw
+        else:
+            sesion.ultimo_proximidad_filtrada = (
+                EMA_ALPHA_PROXIMIDAD * proximidad_monitor_raw + (1.0 - EMA_ALPHA_PROXIMIDAD) * sesion.ultimo_proximidad_filtrada
+            )
 
     angulo_cuello = sesion.ultimo_cuello_filtrado
     angulo_lateral = sesion.ultimo_lateral_filtrado
+    proximidad_monitor = sesion.ultimo_proximidad_filtrada
 
     oclusion_consciente = _existe_oclusion_consciente(
         lectura,
@@ -426,6 +458,19 @@ def analizar_lectura_hibrida(lectura: LecturaHibrida, sesion: SesionTrabajador) 
         proximidad_monitor = proximidad_monitor * 0.55
     elif mirada_abajo_neutra:
         angulo_cuello = angulo_cuello * 0.40
+
+    sesion.en_riesgo_cabeceo = _actualizar_estado_histeresis(
+        angulo_cuello, umbral_cuello_cabeceo, sesion.en_riesgo_cabeceo
+    )
+    sesion.en_riesgo_postura_cuello = _actualizar_estado_histeresis(
+        angulo_cuello, umbral_cuello_postura, sesion.en_riesgo_postura_cuello
+    )
+    sesion.en_riesgo_lateral = _actualizar_estado_histeresis(
+        angulo_lateral, umbral_lateral, sesion.en_riesgo_lateral
+    )
+    sesion.en_riesgo_cercania = _actualizar_estado_histeresis(
+        proximidad_monitor, umbral_cercania, sesion.en_riesgo_cercania
+    )
 
     evidencia_fatiga_ocular = (
         es_clase_fatiga(clase)
@@ -470,7 +515,7 @@ def analizar_lectura_hibrida(lectura: LecturaHibrida, sesion: SesionTrabajador) 
     )
 
     if (
-        angulo_cuello >= umbral_cuello_cabeceo
+        sesion.en_riesgo_cabeceo
         and evidencia_cabeceo
         and permite_cabeceo
         and not oclusion_consciente
@@ -481,22 +526,22 @@ def analizar_lectura_hibrida(lectura: LecturaHibrida, sesion: SesionTrabajador) 
     else:
         sesion.racha_cabeceo_riesgo = max(0, sesion.racha_cabeceo_riesgo - 2)
         sesion.registrar_cabeza_erguida()
-        if angulo_cuello >= umbral_cuello_cabeceo and not calidad_cabeceo_suficiente:
+        if sesion.en_riesgo_cabeceo and not calidad_cabeceo_suficiente:
             evidencias.append("lectura_no_apta_para_cabeceo")
-        
+
     cercania_dominante = (
-        proximidad_monitor >= umbral_cercania
+        sesion.en_riesgo_cercania
         and angulo_lateral < umbral_lateral * 1.35
         and not oclusion_consciente
     )
     mala_postura = (
         not cercania_dominante
-        and ((umbral_cuello_postura <= angulo_cuello < umbral_cuello_cabeceo) or angulo_lateral >= umbral_lateral)
+        and ((sesion.en_riesgo_postura_cuello and not sesion.en_riesgo_cabeceo) or sesion.en_riesgo_lateral)
     )
     if mala_postura:
-        if angulo_cuello >= umbral_cuello_postura:
+        if sesion.en_riesgo_postura_cuello:
             evidencias.append("cuello_inclinado")
-        if angulo_lateral >= umbral_lateral:
+        if sesion.en_riesgo_lateral:
             evidencias.append("inclinacion_lateral")
         sesion.racha_postura_riesgo += 1
         sesion.registrar_mala_postura()
@@ -527,16 +572,20 @@ def analizar_lectura_hibrida(lectura: LecturaHibrida, sesion: SesionTrabajador) 
         
     estado = EstadoAlerta.OPTIMO
     duracion_riesgo = 0.0
-    if (
+    fatiga_por_cierre_ocular_real = (
         sesion.segundos_ojos_cerrados() >= UMBRAL_OJOS_CERRADOS_SEGUNDOS
         or sesion.indice_fatiga >= 1.65
-        or sesion.racha_yolo_sueno >= 3
-    ):
+    )
+    cabeceo_por_tiempo_sostenido = sesion.segundos_cabeceo() >= UMBRAL_CABECEO_TIEMPO_SEGUNDOS
+    if fatiga_por_cierre_ocular_real:
         estado = EstadoAlerta.FATIGA_EXTREMA
         duracion_riesgo = max(sesion.segundos_ojos_cerrados(), UMBRAL_OJOS_CERRADOS_SEGUNDOS)
-    elif sesion.segundos_cabeceo() >= UMBRAL_CABECEO_TIEMPO_SEGUNDOS:
+    elif cabeceo_por_tiempo_sostenido:
         estado = EstadoAlerta.CABECEO
         duracion_riesgo = sesion.segundos_cabeceo()
+    elif sesion.racha_yolo_sueno >= 3:
+        estado = EstadoAlerta.FATIGA_EXTREMA
+        duracion_riesgo = max(sesion.segundos_ojos_cerrados(), UMBRAL_OJOS_CERRADOS_SEGUNDOS)
     elif (
         sesion.segundos_cercania_monitor() >= RIESGO_OBSERVACION_SEGUNDOS
         or sesion.racha_cercania_monitor >= RACHA_CERCANIA_CONFIRMADA

@@ -3,9 +3,8 @@ from __future__ import annotations
 import unittest
 from datetime import datetime, timedelta
 
-from src.application.servicios import MonitorSafeWorkService
+from src.application.servicios import FusionSensoresService, MonitorSafeWorkService
 from src.domain.entities.postura import Coordenada, EstadoAlerta, LecturaHibrida, NivelRiesgo
-from src.infrastructure.adaptadores.motor_vision_hibrido_qthread import MotorVisionIA
 
 
 class MemoriaFalsa:
@@ -258,7 +257,7 @@ class MonitorSafeWorkServiceTest(unittest.TestCase):
         )
         lectura = construir_lectura(mar=0.45, yolo_clase="yawn", yolo_confianza=0.62)
 
-        MotorVisionIA._aplicar_fusion_sensores(lectura)
+        FusionSensoresService().aplicar(lectura)
         resultado = servicio.procesar_lectura(lectura)
 
         self.assertEqual(lectura.fusion_nivel, NivelRiesgo.OBSERVACION)
@@ -281,9 +280,15 @@ class MonitorSafeWorkServiceTest(unittest.TestCase):
             memoria_usuario=memoria,
         )
 
+        # La confirmacion por apertura sostenida exige ojos NO muy abiertos (evita
+        # falsos positivos al hablar/sonreir) y racha_boca_abierta >= 30 frames.
+        # La evidencia de confirmacion es transitoria: aparece solo en el frame 30,
+        # luego racha_boca_abierta se reinicia, por eso el conteo exacto importa.
         resultado = None
-        for _ in range(4):
-            resultado = servicio.procesar_lectura(construir_lectura(mar=0.46, yolo_clase="normal"))
+        for _ in range(30):
+            resultado = servicio.procesar_lectura(
+                construir_lectura(ear=0.25, mar=0.46, yolo_clase="normal")
+            )
 
         self.assertIsNotNone(resultado)
         self.assertEqual(resultado.estado_fisico.estado, EstadoAlerta.ADVERTENCIA_SUENO)
@@ -292,7 +297,7 @@ class MonitorSafeWorkServiceTest(unittest.TestCase):
     def test_sensor_fusion_confirma_yolo_y_mediapipe(self) -> None:
         lectura = construir_lectura(mar=0.46, yolo_clase="Yawning", yolo_confianza=0.86)
 
-        MotorVisionIA._aplicar_fusion_sensores(lectura)
+        FusionSensoresService().aplicar(lectura)
 
         self.assertEqual(lectura.fusion_nivel, NivelRiesgo.RIESGO_CONFIRMADO)
         self.assertIn("coinciden", lectura.fusion_motivo.lower())
@@ -300,7 +305,7 @@ class MonitorSafeWorkServiceTest(unittest.TestCase):
     def test_yolo_normalizado_no_confunde_no_yawn(self) -> None:
         lectura = construir_lectura(mar=0.46, yolo_clase="no_yawn", yolo_confianza=0.92)
 
-        MotorVisionIA._aplicar_fusion_sensores(lectura)
+        FusionSensoresService().aplicar(lectura)
 
         self.assertIsNone(lectura.fusion_nivel)
 
@@ -308,7 +313,7 @@ class MonitorSafeWorkServiceTest(unittest.TestCase):
         lectura = construir_lectura(ear=0.34, mar=0.10, yolo_clase="drowsy", yolo_confianza=0.86)
         lectura.mirando_abajo = True
 
-        MotorVisionIA._aplicar_fusion_sensores(lectura)
+        FusionSensoresService().aplicar(lectura)
 
         self.assertEqual(lectura.fusion_nivel, NivelRiesgo.OBSERVACION)
 
@@ -425,6 +430,12 @@ class MonitorSafeWorkServiceTest(unittest.TestCase):
             max_duracion_calibracion_segundos=0.0,
             memoria_usuario=memoria,
         )
+        # El cabeceo requiere UMBRAL_CABECEO_TIEMPO_SEGUNDOS de duracion real sostenida;
+        # precargamos el inicio para simular que ya lleva tiempo, igual que se hace
+        # con inicio_cercania_monitor en test_cercania_domina_sobre_inclinacion_aparente.
+        now = datetime.now()
+        servicio.sesion.inicio_cabeceo = now - timedelta(seconds=3)
+        servicio.sesion.ultimo_registro_cabeceo = now
 
         resultado = None
         for _ in range(5):

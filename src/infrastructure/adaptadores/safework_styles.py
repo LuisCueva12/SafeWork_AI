@@ -19,7 +19,6 @@ QWidget {
 QStatusBar {
     background: #f8fafc;
     color: #475569;
-    border-top: 1px solid #dbe4f0;
     font-size: 11px;
     padding: 3px 12px;
 }
@@ -52,8 +51,8 @@ QScrollBar::sub-line:vertical {
 
 QMenu {
     background: #ffffff;
-    border: 1px solid #dbe4f0;
-    border-radius: 10px;
+    border: 1px solid #eef2f7;
+    border-radius: 12px;
     padding: 4px;
 }
 
@@ -73,14 +72,12 @@ SIDEBAR_STYLE = """
 QWidget#sidebar {
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
         stop:0 #08244a, stop:1 #04162e);
-    border-right: 1px solid #17345a;
 }
 """
 
 HEADER_STYLE = """
 QWidget#header {
     background: #ffffff;
-    border-bottom: 1px solid #dbe4f0;
 }
 """
 
@@ -93,8 +90,8 @@ CONTENT_BG_STYLE = (
 CARD_STYLE = """
 QFrame#card {
     background: #ffffff;
-    border: 1px solid #dbe4f0;
-    border-radius: 14px;
+    border: none;
+    border-radius: 16px;
 }
 """
 
@@ -104,16 +101,16 @@ SECTION_TITLE_STYLE = (
 )
 
 STATUS_COLORS = {
-    "OPTIMO":            ("#059669", "#ecfdf5", "#a7f3d0"),
-    "CALIBRANDO":        ("#0284c7", "#eff6ff", "#bae6fd"),
-    "CERCANIA":          ("#d97706", "#fffbeb", "#fde68a"),
-    "MALA_POSTURA":      ("#ea580c", "#fff7ed", "#fed7aa"),
-    "ADVERTENCIA_SUENO": ("#d97706", "#fffbeb", "#fde68a"),
-    "FATIGA_EXTREMA":    ("#dc2626", "#fef2f2", "#fecaca"),
-    "CABECEO":           ("#dc2626", "#fef2f2", "#fecaca"),
-    "AUSENTE":           ("#64748b", "#f8fafc", "#e2e8f0"),
-    "LECTURA_INESTABLE": ("#64748b", "#f8fafc", "#e2e8f0"),
-    "ERROR":             ("#dc2626", "#fef2f2", "#fecaca"),
+    "OPTIMO":            ("#059669", "#ecfdf5"),
+    "CALIBRANDO":        ("#0284c7", "#eff6ff"),
+    "CERCANIA":          ("#d97706", "#fffbeb"),
+    "MALA_POSTURA":      ("#ea580c", "#fff7ed"),
+    "ADVERTENCIA_SUENO": ("#d97706", "#fffbeb"),
+    "FATIGA_EXTREMA":    ("#dc2626", "#fef2f2"),
+    "CABECEO":           ("#dc2626", "#fef2f2"),
+    "AUSENTE":           ("#64748b", "#f8fafc"),
+    "LECTURA_INESTABLE": ("#64748b", "#f8fafc"),
+    "ERROR":             ("#dc2626", "#fef2f2"),
 }
 
 LEVEL_COLORS = {
@@ -125,22 +122,22 @@ LEVEL_COLORS = {
 
 METRIC_CHIP_STYLE = (
     "font-size: 12px; color: #475569; background: #f8fafc; "
-    "padding: 8px 10px; border-radius: 8px; border: 1px solid #e2e8f0;"
+    "padding: 8px 10px; border-radius: 10px;"
 )
 
 METRIC_CHIP_ALERT_STYLE = (
     "font-size: 12px; color: #92400e; background: #fffbeb; "
-    "padding: 8px 10px; border-radius: 8px; border: 1px solid #fde68a;"
+    "padding: 8px 10px; border-radius: 10px;"
 )
 
 METRIC_CHIP_OK_STYLE = (
     "font-size: 12px; color: #065f46; background: #ecfdf5; "
-    "padding: 8px 10px; border-radius: 8px; border: 1px solid #a7f3d0;"
+    "padding: 8px 10px; border-radius: 10px;"
 )
 
 METRIC_CHIP_DANGER_STYLE = (
     "font-size: 12px; color: #991b1b; background: #fef2f2; "
-    "padding: 8px 10px; border-radius: 8px; border: 1px solid #fecaca;"
+    "padding: 8px 10px; border-radius: 10px;"
 )
 
 BTN_VOICE_ON = (
@@ -164,22 +161,22 @@ BTN_EXPORT = (
 
 BANNER_CRITICAL = (
     "font-size: 13px; font-weight: 700; color: #991b1b; background: #fef2f2; "
-    "padding: 10px 14px; border-radius: 10px; border: 1px solid #fecaca;"
+    "padding: 10px 14px; border-radius: 12px;"
 )
 
 VIDEO_FEED_IDLE = (
-    "background-color: #0f172a; border: 2px solid #1e3a5f; border-radius: 10px; "
+    "background-color: #0f172a; border: none; border-radius: 14px; "
     "color: #475569; font-size: 13px;"
 )
 
 VIDEO_FEED_ERROR = (
-    "background-color: #0f172a; border: 2px solid #dc2626; border-radius: 10px; "
+    "background-color: #1a0f10; border: none; border-radius: 14px; "
     "color: #fca5a5; font-size: 13px; font-weight: 600;"
 )
 
 INCIDENT_PANEL_STYLE = (
     "font-size: 12px; color: #334155; background: #f8fafc; "
-    "padding: 10px; border-radius: 8px; border: 1px solid #e2e8f0;"
+    "padding: 10px; border-radius: 10px;"
 )
 
 NAV_BTN_STYLE = (
@@ -209,12 +206,12 @@ NAV_BUTTON_ACTIVE = (
     "QPushButton {"
     "background: qlineargradient(x1:0, y1:0, x2:1, y2:0,"
     "stop:0 #0a7abf, stop:1 #1095c7);"
-    "border: 1px solid #22b3dc; border-radius: 10px;"
+    "border: none; border-radius: 10px;"
     "padding: 12px 14px; text-align: left; }"
     "QPushButton:hover { background: #0f8fc4; }"
 )
 
 HEADER_CHIP_STYLE = (
     "font-size: 12px; color: #1e3a5f; background: #f1f8ff; "
-    "padding: 6px 10px; border-radius: 9px; border: 1px solid #d2e8ff;"
+    "padding: 6px 10px; border-radius: 10px;"
 )
