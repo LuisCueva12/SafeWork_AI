@@ -235,10 +235,12 @@ class SafeWorkApp(QMainWindow):
         user_layout = QHBoxLayout()
         user_layout.setSpacing(10)
         
-        avatar_lbl = QLabel("\uE77B")
+        nombre_usuario = self._perfil_usuario.get("nombre", "Usuario local").strip()
+        inicial = nombre_usuario[0].upper() if nombre_usuario else "U"
+        avatar_lbl = QLabel(inicial)
         avatar_lbl.setFixedSize(36, 36)
         avatar_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        avatar_lbl.setStyleSheet("font-family: 'Segoe MDL2 Assets'; font-size: 16px; color: #1e3a5f; background: #e2e8f0; border-radius: 18px;")
+        avatar_lbl.setStyleSheet("font-size: 15px; font-weight: 700; color: #1e3a5f; background: #e2e8f0; border-radius: 18px;")
         
         text_layout = QVBoxLayout()
         text_layout.setContentsMargins(0, 0, 0, 0)
@@ -314,10 +316,10 @@ class SafeWorkApp(QMainWindow):
         metricas_row.setSpacing(4)
         metricas_row.setAlignment(Qt.AlignmentFlag.AlignHCenter)
 
-        self._circ_postura = CircularMetricWidget("Postura", "\uE1E2")
-        self._circ_ojos = CircularMetricWidget("Fatiga", "\uE890")
-        self._circ_distancia = CircularMetricWidget("Distancia", "\uE7F4")
-        self._circ_energia = CircularMetricWidget("Atencion", "\uE734")
+        self._circ_postura = CircularMetricWidget("Postura")
+        self._circ_ojos = CircularMetricWidget("Fatiga")
+        self._circ_distancia = CircularMetricWidget("Distancia")
+        self._circ_energia = CircularMetricWidget("Atencion")
 
         for w in (self._circ_postura, self._circ_ojos, self._circ_distancia, self._circ_energia):
             metricas_row.addWidget(w)
@@ -447,11 +449,8 @@ class SafeWorkApp(QMainWindow):
         layout.setSpacing(12)
 
         title_row = QHBoxLayout()
-        icon_lbl = QLabel("\uE9A2")
-        icon_lbl.setStyleSheet("font-family: 'Segoe MDL2 Assets'; font-size: 16px; color: #1e293b;")
         sec_title = QLabel("Insights IA")
         sec_title.setStyleSheet("font-size: 14px; font-weight: 700; color: #1e293b;")
-        title_row.addWidget(icon_lbl)
         title_row.addWidget(sec_title)
         title_row.addStretch(1)
         layout.addLayout(title_row)
@@ -475,7 +474,7 @@ class SafeWorkApp(QMainWindow):
         voz_row = QHBoxLayout()
         voz_lbl = QLabel("Control de voz")
         voz_lbl.setStyleSheet("font-size: 12px; font-weight: 600; color: #0f172a;")
-        self._btn_voz_toggle = QPushButton("Voz activa")
+        self._btn_voz_toggle = QPushButton("● Voz activa")
         self._btn_voz_toggle.setFixedHeight(28)
         self._btn_voz_toggle.setStyleSheet(
             "QPushButton { background: #0ea5a4; color: #ffffff; border: none; border-radius: 7px; "
@@ -557,19 +556,11 @@ class SafeWorkApp(QMainWindow):
         score_row.setContentsMargins(12, 10, 12, 10)
         score_row.setSpacing(10)
 
-        icon_score = QLabel("\uE9D2")
-        icon_score.setFixedSize(34, 34)
-        icon_score.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        icon_score.setStyleSheet(
-            "font-family: 'Segoe MDL2 Assets'; font-size: 20px; color: #0f766e; "
-            "background: #ccfbf1; border-radius: 8px;"
-        )
         self._score_global = QLabel("100")
         self._score_global.setStyleSheet("font-size: 38px; font-weight: 800; color: #0f766e;")
         self._score_detalle = QLabel("Indice general\nOperacion optima")
         self._score_detalle.setStyleSheet("font-size: 13px; color: #475569;")
 
-        score_row.addWidget(icon_score)
         score_row.addWidget(self._score_global)
         score_row.addWidget(self._score_detalle)
         score_row.addStretch(1)
@@ -603,9 +594,9 @@ class SafeWorkApp(QMainWindow):
 
         layout.addStretch(1)
 
-        self._boton_exportar = QPushButton("\uE8A5  Exportar reporte")
+        self._boton_exportar = QPushButton("\u2193  Exportar reporte")
         self._boton_exportar.setStyleSheet(
-            "QPushButton { font-family: 'Segoe UI', 'Segoe MDL2 Assets'; background: #1d4ed8; color: #ffffff; "
+            "QPushButton { background: #1d4ed8; color: #ffffff; "
             "font-size: 12px; font-weight: 700; border: none; border-radius: 8px; padding: 11px 14px; }"
             "QPushButton:hover { background: #1e40af; }"
         )
@@ -698,16 +689,16 @@ class SafeWorkApp(QMainWindow):
             self._worker_voz.limpiar_cola()
         if hasattr(self, "_btn_voz_toggle"):
             if self._voz_habilitada:
-                self._btn_voz_toggle.setText("\uE995 Voz activa")
+                self._btn_voz_toggle.setText("\u25CF Voz activa")
                 self._btn_voz_toggle.setStyleSheet(
-                    "QPushButton { font-family: 'Segoe UI', 'Segoe MDL2 Assets'; background: #0ea5a4; color: #ffffff; border: none; border-radius: 7px; "
+                    "QPushButton { background: #0ea5a4; color: #ffffff; border: none; border-radius: 7px; "
                     "padding: 4px 10px; font-size: 11px; font-weight: 700; }"
                     "QPushButton:hover { background: #0f8f8e; }"
                 )
             else:
-                self._btn_voz_toggle.setText("\uE1D6 Voz inactiva")
+                self._btn_voz_toggle.setText("\u25CB Voz inactiva")
                 self._btn_voz_toggle.setStyleSheet(
-                    "QPushButton { font-family: 'Segoe UI', 'Segoe MDL2 Assets'; background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; border-radius: 7px; "
+                    "QPushButton { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; border-radius: 7px; "
                     "padding: 4px 10px; font-size: 11px; font-weight: 700; }"
                     "QPushButton:hover { background: #e2e8f0; }"
                 )
