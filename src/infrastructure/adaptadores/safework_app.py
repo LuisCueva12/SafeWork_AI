@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QDialogButtonBox,
     QFrame,
     QFormLayout,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -508,20 +509,22 @@ class SafeWorkApp(QMainWindow):
         self._log_resumen = QLabel("")
         self._log_resumen.setVisible(False)
 
-        self._ausencia_ultima = QLabel("Sin ausencias registradas")
+        self._ausencia_ultima = QLabel("")
         self._ausencia_ultima.setWordWrap(True)
         self._ausencia_ultima.setStyleSheet(
             "font-size: 12px; color: #1d4ed8; background: #eff6ff; "
             "padding: 12px; border-radius: 10px;"
         )
+        self._ausencia_ultima.setVisible(False)
         layout.addWidget(self._ausencia_ultima)
 
-        self._ultima_incidencia = QLabel("Aun no se registran incidencias.")
+        self._ultima_incidencia = QLabel("")
         self._ultima_incidencia.setWordWrap(True)
         self._ultima_incidencia.setStyleSheet(
             "font-size: 12px; color: #065f46; background: #ecfdf5; "
             "padding: 12px; border-radius: 10px;"
         )
+        self._ultima_incidencia.setVisible(False)
         layout.addWidget(self._ultima_incidencia)
         
         layout.addStretch(1)
@@ -578,9 +581,10 @@ class SafeWorkApp(QMainWindow):
         self._historial_semana = self._crear_stat_row("Ultimos 7 dias", "--")
         self._historial_mes = self._crear_stat_row("Ultimos 30 dias", "--")
 
-        stats_layout = QVBoxLayout()
-        stats_layout.setSpacing(6)
-        for row in (
+        stats_layout = QGridLayout()
+        stats_layout.setHorizontalSpacing(8)
+        stats_layout.setVerticalSpacing(6)
+        filas_stats = (
             self._incidencias_totales,
             self._incidencias_postura,
             self._incidencias_pantalla,
@@ -588,8 +592,9 @@ class SafeWorkApp(QMainWindow):
             self._historial_hoy,
             self._historial_semana,
             self._historial_mes,
-        ):
-            stats_layout.addWidget(row)
+        )
+        for indice, row in enumerate(filas_stats):
+            stats_layout.addWidget(row, indice // 2, indice % 2)
         layout.addLayout(stats_layout)
 
         layout.addStretch(1)
@@ -730,6 +735,7 @@ class SafeWorkApp(QMainWindow):
             "font-size: 12px; color: #374151; background: #eff6ff; "
             "padding: 8px 10px; border-radius: 10px;"
         )
+        self._ausencia_ultima.setVisible(True)
         self._actualizar_stat(self._ausencia_total_lbl, total_fmt)
         self._actualizar_stat(self._ausencia_conteo_lbl, f"{self._conteo_ausencias} vez" if self._conteo_ausencias == 1 else f"{self._conteo_ausencias} veces")
         self.statusBar().showMessage(f"Retorno registrado - ausencia de {duracion_fmt}", 6000)
@@ -833,9 +839,10 @@ class SafeWorkApp(QMainWindow):
             descripcion = str(ultima.get("descripcion", "Sin descripcion"))
             timestamp = str(ultima.get("timestamp", ""))
             self._ultima_incidencia.setText(f"{estado_str}\n{descripcion}")
+            self._ultima_incidencia.setVisible(True)
             self._log_resumen.setText(f"{timestamp} | Prioridad: {severidad}")
         else:
-            self._ultima_incidencia.setText("Aun no se registran incidencias.")
+            self._ultima_incidencia.setVisible(False)
             self._log_resumen.setText("El historial mostrara la ultima incidencia validada.")
 
     @staticmethod
