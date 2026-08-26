@@ -514,12 +514,13 @@ def analizar_lectura_hibrida(lectura: LecturaHibrida, sesion: SesionTrabajador) 
         )
     )
 
-    if (
+    cabeceo_confirmado = (
         sesion.en_riesgo_cabeceo
         and evidencia_cabeceo
         and permite_cabeceo
         and not oclusion_consciente
-    ):
+    )
+    if cabeceo_confirmado:
         evidencias.append("cabeza_inclinada_con_somnolencia")
         sesion.racha_cabeceo_riesgo += 1
         sesion.registrar_cabeceo_iniciado()
@@ -534,9 +535,12 @@ def analizar_lectura_hibrida(lectura: LecturaHibrida, sesion: SesionTrabajador) 
         and angulo_lateral < umbral_lateral * 1.35
         and not oclusion_consciente
     )
+    # Una inclinacion fuerte SIN evidencia de somnolencia (ojos abiertos, sin
+    # senal YOLO) debe seguir contando como mala postura, no quedar en un
+    # limbo esperando una confirmacion de cabeceo que nunca llega.
     mala_postura = (
         not cercania_dominante
-        and ((sesion.en_riesgo_postura_cuello and not sesion.en_riesgo_cabeceo) or sesion.en_riesgo_lateral)
+        and ((sesion.en_riesgo_postura_cuello and not cabeceo_confirmado) or sesion.en_riesgo_lateral)
     )
     if mala_postura:
         if sesion.en_riesgo_postura_cuello:
