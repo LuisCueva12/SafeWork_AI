@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import QRect, Qt, QTimer
+from PyQt6.QtCore import QPointF, QRect, QRectF, Qt, QTimer
 from PyQt6.QtGui import QColor, QFont, QPainter, QPen
 from PyQt6.QtWidgets import QGraphicsDropShadowEffect, QWidget
 
@@ -20,6 +20,55 @@ def aplicar_sombra_suave(
     widget.setGraphicsEffect(sombra)
 
 
+def dibujar_icono_lineal(painter: QPainter, rect: QRect, tipo: str, color: QColor) -> None:
+    """Iconos de trazo simple estilo Lucide, dibujados a mano con QPainter.
+
+    Cero dependencia de fuentes o assets externos: son solo lineas y arcos,
+    por lo que se ven identicos en Linux, Windows y Mac sin riesgo de
+    glifos faltantes.
+    """
+    if not tipo:
+        return
+    painter.save()
+    pen = QPen(color)
+    pen.setWidthF(1.6)
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    painter.setPen(pen)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+
+    cx, cy = rect.center().x(), rect.center().y()
+    r = min(rect.width(), rect.height()) / 2.0
+
+    if tipo == "postura":
+        # icono "user": cabeza + hombros
+        cabeza_r = r * 0.34
+        painter.drawEllipse(QPointF(cx, cy - r * 0.38), cabeza_r, cabeza_r)
+        cuerpo = QRectF(cx - r * 0.62, cy + r * 0.05, r * 1.24, r * 1.05)
+        painter.drawArc(cuerpo, 0, 180 * 16)
+    elif tipo == "fatiga":
+        # icono "moon": luna creciente (dos circulos superpuestos)
+        painter.drawEllipse(QPointF(cx - r * 0.12, cy), r * 0.68, r * 0.68)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor("#ffffff"))
+        painter.drawEllipse(QPointF(cx + r * 0.38, cy - r * 0.16), r * 0.58, r * 0.58)
+    elif tipo == "distancia":
+        # icono "monitor": pantalla + base
+        pantalla = QRectF(cx - r * 0.72, cy - r * 0.58, r * 1.44, r * 0.98)
+        painter.drawRoundedRect(pantalla, 2.5, 2.5)
+        painter.drawLine(QPointF(cx, cy + r * 0.40), QPointF(cx, cy + r * 0.70))
+        painter.drawLine(QPointF(cx - r * 0.36, cy + r * 0.70), QPointF(cx + r * 0.36, cy + r * 0.70))
+    elif tipo == "atencion":
+        # icono "target": circulos concentricos
+        painter.drawEllipse(QPointF(cx, cy), r * 0.78, r * 0.78)
+        painter.drawEllipse(QPointF(cx, cy), r * 0.44, r * 0.44)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(color)
+        painter.drawEllipse(QPointF(cx, cy), r * 0.14, r * 0.14)
+
+    painter.restore()
+
+
 class CircularMetricWidget(QWidget):
     def __init__(self, titulo: str, icono: str = "", parent=None) -> None:
         super().__init__(parent)
@@ -36,8 +85,6 @@ class CircularMetricWidget(QWidget):
         # Caché de fuentes: se crean una sola vez en __init__ en lugar de en cada paintEvent.
         # paintEvent se llama ~41 veces/segundo (antes) → ahora 25 veces/segundo con timer a 40ms.
         # Sin caché cada repaint creaba y destruía 5 objetos QFont.
-        self._font_icon = QFont()
-        self._font_icon.setPointSize(12)
         self._font_title = QFont("Segoe UI", 10)
         self._font_title.setWeight(QFont.Weight.DemiBold)
         self._font_val = QFont("Segoe UI", 16)
@@ -104,10 +151,8 @@ class CircularMetricWidget(QWidget):
 
         titulo_x = 14
         if self._icono:
-            icon_rect = QRect(14, 14, 20, 20)
-            painter.setFont(self._font_icon)
-            painter.setPen(QColor("#64748b"))
-            painter.drawText(icon_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, self._icono)
+            icon_rect = QRect(14, 14, 18, 18)
+            dibujar_icono_lineal(painter, icon_rect, self._icono, QColor("#64748b"))
             titulo_x = 36
 
         title_rect = QRect(titulo_x, 14, w - titulo_x - 6, 20)
