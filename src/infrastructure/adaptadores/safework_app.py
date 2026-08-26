@@ -124,7 +124,13 @@ class SafeWorkApp(QMainWindow):
         self._motor.senal_modo_operacion.connect(self._actualizar_modo_operacion)
         self._motor.senal_error_ocurrido.connect(self._manejar_error_motor)
         self._motor.senal_ausencia_resuelta.connect(self._registrar_ausencia)
+        if self._hud_diagnostico is not None:
+            self._motor.senal_diagnostico.connect(self._actualizar_diagnostico)
         self._motor.start()
+
+    def _actualizar_diagnostico(self, texto: str) -> None:
+        if self._hud_diagnostico is not None:
+            self._hud_diagnostico.setText(texto)
 
     @staticmethod
     def _resolver_aviso_visible(avisos: list[str]) -> str:
@@ -287,6 +293,16 @@ class SafeWorkApp(QMainWindow):
         self._video.setMinimumSize(400, 260)
         self._video.setStyleSheet(VIDEO_FEED_IDLE)
         layout.addWidget(self._video, 1)
+
+        self._hud_diagnostico: QLabel | None = None
+        if self._settings.debug_hud_enabled:
+            self._hud_diagnostico = QLabel("Diagnostico: esperando datos...")
+            self._hud_diagnostico.setStyleSheet(
+                "font-family: 'Consolas', monospace; font-size: 10px; color: #22c55e; "
+                "background: #05100a; padding: 6px 8px; border-radius: 8px;"
+            )
+            self._hud_diagnostico.setWordWrap(True)
+            layout.addWidget(self._hud_diagnostico)
 
         self._bloqueo_banner = QLabel("RIESGO CRITICO: realiza una pausa activa antes de continuar.")
         self._bloqueo_banner.setWordWrap(True)

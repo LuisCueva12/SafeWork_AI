@@ -41,6 +41,7 @@ class MotorVisionIA(QThread):
     senal_modo_operacion      = pyqtSignal(str)
     senal_error_ocurrido      = pyqtSignal(str)
     senal_ausencia_resuelta   = pyqtSignal(float)
+    senal_diagnostico         = pyqtSignal(str)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -168,6 +169,18 @@ class MotorVisionIA(QThread):
             if nivel != self._ultimo_nivel:
                 self.senal_nivel_riesgo.emit(nivel)
                 self._ultimo_nivel = nivel
+            if self._settings.debug_hud_enabled:
+                self.senal_diagnostico.emit(self._construir_diagnostico())
+
+    def _construir_diagnostico(self) -> str:
+        fps = self._captura.resumen_diagnostico()
+        sesion = self._monitor.sesion
+        return (
+            f"FPS captura {fps['fps_captura']:.1f} | mediapipe {fps['fps_mediapipe']:.1f} | "
+            f"yolo {fps['fps_yolo']:.1f}\n"
+            f"EAR {sesion.ultimo_ear_filtrado:.3f} (base {sesion.base_ear:.3f}) | "
+            f"MAR {sesion.ultimo_mar_filtrado:.3f} (base {sesion.base_mar:.3f})"
+        )
 
     def _gestionar_ausencia(self, estado: EstadoAlerta) -> None:
         if estado == EstadoAlerta.AUSENTE:

@@ -16,6 +16,8 @@ class SafeWorkSettings:
     frame_height: int
     yolo_inference_stride: int
     yolo_confidence_threshold: float
+    mediapipe_inference_stride: int
+    debug_hud_enabled: bool
     sensitivity: str
     alert_cooldown_seconds: int
     assets_dir: Path
@@ -55,8 +57,10 @@ class SafeWorkSettings:
             capture_index=0,
             frame_width=640,
             frame_height=480,
-            yolo_inference_stride=8,     
+            yolo_inference_stride=8,
             yolo_confidence_threshold=0.55,
+            mediapipe_inference_stride=cls._leer_entero_env("SAFEWORK_MEDIAPIPE_STRIDE", 1),
+            debug_hud_enabled=os.getenv("SAFEWORK_DEBUG_HUD", "0").strip() == "1",
             sensitivity=os.getenv("SAFEWORK_SENSITIVITY", "media").strip().lower() or "media",
             alert_cooldown_seconds=cls._leer_entero_env("SAFEWORK_ALERT_COOLDOWN_SECONDS", 45),
             assets_dir=assets_dir,

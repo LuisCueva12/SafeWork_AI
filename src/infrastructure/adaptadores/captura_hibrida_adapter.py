@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import collections
 import math
 import os
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import cv2
@@ -26,6 +28,33 @@ OJO_DER_PUNTOS = [33, 160, 158, 133, 153, 144]
 BOCA_PUNTOS = [78, 81, 13, 311, 308, 402, 14, 178]
 INDICE_NARIZ_FACE = 1
 
+UMBRAL_MAR_HEURISTICO_YOLO = 0.35
+FRAMES_MAR_SOSTENIDO_YOLO = 8
+
+
+class _ContadorFPS:
+    """Estima FPS a partir de las marcas de tiempo de los ultimos N segundos."""
+
+    def __init__(self, ventana_segundos: float = 1.5) -> None:
+        self._ventana = ventana_segundos
+        self._marcas: collections.deque[float] = collections.deque()
+
+    def registrar(self) -> None:
+        ahora = time.monotonic()
+        self._marcas.append(ahora)
+        limite = ahora - self._ventana
+        while self._marcas and self._marcas[0] < limite:
+            self._marcas.popleft()
+
+    @property
+    def fps(self) -> float:
+        if len(self._marcas) < 2:
+            return 0.0
+        duracion = self._marcas[-1] - self._marcas[0]
+        if duracion <= 0:
+            return 0.0
+        return (len(self._marcas) - 1) / duracion
+
 
 class CapturaHibridaAdapter(PuertoCapturaCorporal):
     def __init__(self, settings: SafeWorkSettings) -> None:
@@ -40,9 +69,15 @@ class CapturaHibridaAdapter(PuertoCapturaCorporal):
         self._contador_frames = 0
         self._ultima_clase_yolo = "normal"
         self._ultima_confianza_yolo = 0.0
+        self._racha_mar_elevado = 0
         self._modo_degradado = False
         self._tiene_iris_landmarks = True
         self._avisos_runtime: list[str] = []
+        self._contador_frames_mediapipe = 0
+        self._ultima_lectura_mediapipe: LecturaHibrida | None = None
+        self._fps_captura = _ContadorFPS()
+        self._fps_mediapipe = _ContadorFPS()
+        self._fps_yolo = _ContadorFPS()
         self._configurar_ultralytics()
         self._inicializar_modelos()
 
@@ -60,9 +95,27 @@ class CapturaHibridaAdapter(PuertoCapturaCorporal):
         if not ok:
             return None
 
+        self._fps_captura.registrar()
         frame_bgr = cv2.flip(frame_bgr, 1)
         self._ultimo_frame = frame_bgr.copy()
         frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+
+        self._contador_frames_mediapipe += 1
+        stride_mediapipe = max(1, self._settings.mediapipe_inference_stride)
+        debe_ejecutar_mediapipe = (
+            self._ultima_lectura_mediapipe is None
+            or self._contador_frames_mediapipe % stride_mediapipe == 0
+        )
+
+        if not debe_ejecutar_mediapipe:
+            lectura_previa = self._ultima_lectura_mediapipe
+            return replace(
+                lectura_previa,
+                yolo_clase=self._ultima_clase_yolo,
+                yolo_confianza=self._ultima_confianza_yolo,
+            )
+
+        self._fps_mediapipe.registrar()
         imagen_mp = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
 
         timestamp_ms = self._nuevo_timestamp()
@@ -90,9 +143,19 @@ class CapturaHibridaAdapter(PuertoCapturaCorporal):
             pose_lms = res_pose.pose_landmarks[0]
             self._mapear_cuerpo(lectura, pose_lms)
         if face_lms is not None:
-            lectura.yolo_clase, lectura.yolo_confianza = self._clasificar_rostro(frame_rgb, face_lms)
+            lectura.yolo_clase, lectura.yolo_confianza = self._clasificar_rostro(
+                frame_rgb, face_lms, lectura.mar
+            )
 
+        self._ultima_lectura_mediapipe = lectura
         return lectura
+
+    def resumen_diagnostico(self) -> dict[str, float]:
+        return {
+            "fps_captura": round(self._fps_captura.fps, 1),
+            "fps_mediapipe": round(self._fps_mediapipe.fps, 1),
+            "fps_yolo": round(self._fps_yolo.fps, 1),
+        }
 
     def obtener_ultimo_frame(self) -> np.ndarray | None:
         return self._ultimo_frame
@@ -204,15 +267,25 @@ class CapturaHibridaAdapter(PuertoCapturaCorporal):
         lectura.hombro_derecho = point_to_coord(12)
         lectura.mano_sobre_rostro = self._mano_sobre_rostro(lectura.nariz, point_to_coord)
 
-    def _clasificar_rostro(self, frame_rgb: np.ndarray, face_landmarks) -> tuple[str, float]:
+    def _clasificar_rostro(self, frame_rgb: np.ndarray, face_landmarks, mar: float) -> tuple[str, float]:
         if self._modelo_yolo is None:
             return "normal", 0.0
 
+        if mar >= UMBRAL_MAR_HEURISTICO_YOLO:
+            self._racha_mar_elevado = min(999, self._racha_mar_elevado + 1)
+        else:
+            self._racha_mar_elevado = 0
+
         self._contador_frames += 1
         stride = max(1, self._settings.yolo_inference_stride)
-        if self._contador_frames % stride != 0:
+        # Ademas del heartbeat periodico, disparamos una clasificacion inmediata
+        # cuando la boca lleva ~0.5s elevada, para confirmar bostezos mas rapido
+        # sin subir la frecuencia base de inferencia.
+        disparo_por_mar_sostenido = self._racha_mar_elevado == FRAMES_MAR_SOSTENIDO_YOLO
+        if self._contador_frames % stride != 0 and not disparo_por_mar_sostenido:
             return self._ultima_clase_yolo, self._ultima_confianza_yolo
 
+        self._fps_yolo.registrar()
         try:
             rostro = self._recortar_rostro(frame_rgb, face_landmarks)
             if rostro is None:
