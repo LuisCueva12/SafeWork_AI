@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from PyQt6.QtCore import QPointF, QRect, QRectF, Qt, QTimer
 from PyQt6.QtGui import QColor, QFont, QPainter, QPen
-from PyQt6.QtWidgets import QGraphicsDropShadowEffect, QWidget
+from PyQt6.QtWidgets import QFrame, QGraphicsDropShadowEffect, QHBoxLayout, QLabel, QWidget
+
+from .safework_styles import STAT_LABEL_STYLE, STAT_VALUE_STYLE
 
 
 def aplicar_sombra_suave(
@@ -18,6 +20,28 @@ def aplicar_sombra_suave(
     sombra.setOffset(0, offset_y)
     sombra.setColor(color or QColor(15, 23, 42, 45))
     widget.setGraphicsEffect(sombra)
+
+
+class StatRow(QFrame):
+    """Fila etiqueta/valor reutilizable para paneles de estadisticas."""
+
+    def __init__(self, etiqueta: str, valor: str = "--", parent=None) -> None:
+        super().__init__(parent)
+        self.setStyleSheet("QFrame { background: #f8fafc; border-radius: 10px; }")
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 7, 10, 7)
+        layout.setSpacing(6)
+        lbl = QLabel(etiqueta)
+        lbl.setStyleSheet(STAT_LABEL_STYLE)
+        self._value_label = QLabel(valor)
+        self._value_label.setObjectName("statValue")
+        self._value_label.setStyleSheet(STAT_VALUE_STYLE)
+        layout.addWidget(lbl)
+        layout.addStretch(1)
+        layout.addWidget(self._value_label)
+
+    def actualizar(self, valor: str) -> None:
+        self._value_label.setText(valor)
 
 
 def dibujar_icono_lineal(painter: QPainter, rect: QRect, tipo: str, color: QColor) -> None:
